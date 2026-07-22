@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/table";
 import { ServiceFavicon } from "@/components/service-favicon";
 import { EditEmployee } from "./edit-employee";
+import { OffboardDialog, type OffboardSeat } from "./offboard-dialog";
 
 export default async function EmployeeDetailPage({
   params,
@@ -57,6 +58,16 @@ export default async function EmployeeDetailPage({
   }
   const totals = [...costByCurrency.entries()];
 
+  const offboardSeats: OffboardSeat[] = activeSeats.map((s) => ({
+    id: s.id,
+    serviceName: s.service.name,
+    monthly: normalizeToMonthly(
+      new Prisma.Decimal(s.seatPrice),
+      s.service.billingCycle
+    ).toNumber(),
+    currency: s.service.currency,
+  }));
+
   return (
     <div className="space-y-6">
       <Link
@@ -82,13 +93,22 @@ export default async function EmployeeDetailPage({
           </p>
         </div>
         {canEdit && (
-          <EditEmployee
-            employee={{
-              id: employee.id,
-              fullName: employee.fullName,
-              department: employee.department,
-            }}
-          />
+          <div className="flex gap-2">
+            <EditEmployee
+              employee={{
+                id: employee.id,
+                fullName: employee.fullName,
+                department: employee.department,
+              }}
+            />
+            {employee.status === "active" && (
+              <OffboardDialog
+                employeeId={employee.id}
+                employeeName={employee.fullName}
+                seats={offboardSeats}
+              />
+            )}
+          </div>
         )}
       </div>
 
