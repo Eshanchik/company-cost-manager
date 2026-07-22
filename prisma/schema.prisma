@@ -1,0 +1,354 @@
+// SubTrack — схема данных (§3 SPEC).
+// Денежные поля — Decimal, никогда float.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ----------------------------------------------------------------------------
+// Перечисления
+// ----------------------------------------------------------------------------
+
+enum Role {
+  viewer
+  manager
+  admin
+}
+
+enum BillingModel {
+  fixed
+  per_seat
+  hybrid
+}
+
+enum BillingCycle {
+  monthly
+  yearly
+}
+
+enum ServiceStatus {
+  active
+  paused
+  cancelled
+  archived
+}
+
+enum EmployeeStatus {
+  active
+  offboarded
+}
+
+enum PaymentSource {
+  manual
+  confirmed_expected
+  csv_import
+}
+
+enum PlanLineStatus {
+  expected
+  confirmed
+  waived
+}
+
+// ----------------------------------------------------------------------------
+// Доступ и пользователи (§3.1)
+// ----------------------------------------------------------------------------
+
+model AllowedEmail {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  role      Role     @default(viewer)
+  addedBy   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("allowed_email")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  role          Role      @default(viewer)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts Account[]
+  sessions Session[]
+
+  ownedServices  Service[] @relation("ServiceOwner")
+  backupServices Service[] @relation("ServiceBackupOwner")
+
+  @@map("user")
+}
+
+// Стандартные таблицы Auth.js (NextAuth v5)
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("account")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("session")
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_token")
+}
+
+// ----------------------------------------------------------------------------
+// Справочники (§3.2, §3.3)
+// ----------------------------------------------------------------------------
+
+model Category {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  color     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  services Service[]
+
+  @@map("category")
+}
+
+model PaymentMethod {
+  id         String   @id @default(cuid())
+  name       String
+  note       String?
+  isArchived Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  services Service[]
+
+  @@map("payment_method")
+}
+
+// ----------------------------------------------------------------------------
+// Сервис — подписка (§3.4)
+// ----------------------------------------------------------------------------
+
+model Service {
+  id                     String        @id @default(cuid())
+  name                   String
+  vendorUrl              String?
+  categoryId             String?
+  description            String?
+  billingModel           BillingModel
+  billingCycle           BillingCycle
+  price                  Decimal       @default(0) @db.Decimal(18, 6)
+  seatPriceDefault       Decimal?      @db.Decimal(18, 6)
+  currency               String        @default("USD")
+  billingDay             Int?
+  renewalDate            DateTime?
+  nextPaymentDate        DateTime?
+  paymentMethodId        String?
+  ownerId                String
+  backupOwnerId          String?
+  status                 ServiceStatus @default(active)
+  cancellationNoticeDays Int           @default(30)
+  tags                   String[]      @default([])
+  notes                  String?
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
+
+  category      Category?      @relation(fields: [categoryId], references: [id])
+  paymentMethod PaymentMethod? @relation(fields: [paymentMethodId], references: [id])
+  owner         User           @relation("ServiceOwner", fields: [ownerId], references: [id])
+  backupOwner   User?          @relation("ServiceBackupOwner", fields: [backupOwnerId], references: [id])
+
+  seats     Seat[]
+  payments  Payment[]
+  planLines PlanLine[]
+
+  @@index([status])
+  @@index([categoryId])
+  @@index([ownerId])
+  @@map("service")
+}
+
+// ----------------------------------------------------------------------------
+// Сотрудник и место (§3.5, §3.6)
+// ----------------------------------------------------------------------------
+
+model Employee {
+  id           String         @id @default(cuid())
+  email        String         @unique
+  fullName     String
+  department   String?
+  status       EmployeeStatus @default(active)
+  offboardedAt DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  seats Seat[]
+
+  @@map("employee")
+}
+
+model Seat {
+  id         String    @id @default(cuid())
+  serviceId  String
+  employeeId String
+  seatPrice  Decimal   @db.Decimal(18, 6)
+  startedAt  DateTime  @default(now())
+  endedAt    DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  service  Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@index([serviceId])
+  @@index([employeeId])
+  // Не более одного активного места на пару (service, employee) —
+  // гарантируется частичным уникальным индексом (создаётся в миграции).
+  @@map("seat")
+}
+
+// ----------------------------------------------------------------------------
+// Факт: платёж (§3.7)
+// ----------------------------------------------------------------------------
+
+model Payment {
+  id         String        @id @default(cuid())
+  serviceId  String
+  paidAt     DateTime
+  amount     Decimal       @db.Decimal(18, 6)
+  currency   String
+  amountBase Decimal       @db.Decimal(18, 6)
+  source     PaymentSource @default(manual)
+  planLineId String?       @unique
+  comment    String?
+  invoiceUrl String?
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  service  Service   @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  planLine PlanLine? @relation(fields: [planLineId], references: [id])
+
+  @@index([serviceId])
+  @@index([paidAt])
+  @@map("payment")
+}
+
+// ----------------------------------------------------------------------------
+// План-снапшоты (§3.8)
+// ----------------------------------------------------------------------------
+
+model PlanSnapshot {
+  id        String   @id @default(cuid())
+  // Месяц плана, нормализованный к первому числу (00:00 APP_TZ).
+  month     DateTime @unique
+  createdAt DateTime @default(now())
+
+  lines PlanLine[]
+
+  @@map("plan_snapshot")
+}
+
+model PlanLine {
+  id             String         @id @default(cuid())
+  snapshotId     String
+  serviceId      String
+  expectedDate   DateTime
+  expectedAmount Decimal        @db.Decimal(18, 6)
+  currency       String
+  amountBase     Decimal        @db.Decimal(18, 6)
+  breakdown      Json
+  status         PlanLineStatus @default(expected)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  snapshot PlanSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  service  Service      @relation(fields: [serviceId], references: [id])
+  payment  Payment?
+
+  @@index([snapshotId])
+  @@index([serviceId])
+  @@index([status])
+  @@map("plan_line")
+}
+
+// ----------------------------------------------------------------------------
+// Курсы валют (§3.9)
+// ----------------------------------------------------------------------------
+
+model FxRate {
+  id       String   @id @default(cuid())
+  date     DateTime
+  from     String
+  to       String
+  rate     Decimal  @db.Decimal(18, 8)
+  createdAt DateTime @default(now())
+
+  @@unique([date, from, to])
+  @@index([from, to, date])
+  @@map("fx_rate")
+}
+
+// ----------------------------------------------------------------------------
+// Аудит-лог (§3.10)
+// ----------------------------------------------------------------------------
+
+model AuditLog {
+  id       String   @id @default(cuid())
+  entity   String
+  entityId String
+  actor    String
+  action   String
+  diff     Json?
+  ts       DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([ts])
+  @@map("audit_log")
+}
+
+// ----------------------------------------------------------------------------
+// Настройки инстанса (singleton)
+// ----------------------------------------------------------------------------
+
+model Setting {
+  id                    String   @id @default("singleton")
+  baseCurrency          String   @default("USD")
+  confirmationOverdueDays Int    @default(5)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@map("setting")
+}
