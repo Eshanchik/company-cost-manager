@@ -9,6 +9,8 @@ import { writeAudit } from "@/lib/audit";
 import { parseCsv } from "@/lib/csv/parse";
 import { partitionUnique } from "@/lib/csv/dedup";
 import { computeNextPaymentDate } from "@/lib/calc/dates";
+import { convert, type RateRecord } from "@/lib/calc/fx";
+import { SUPPORTED_CURRENCIES } from "@/lib/currencies";
 
 export type ImportResult =
   | {
@@ -259,5 +261,124 @@ export async function importSeatsCsv(
     if (e instanceof AuthorizationError) return { ok: false, error: e.message };
     console.error("importSeatsCsv:", e);
     return { ok: false, error: "Не удалось импортировать места" };
+  }
+}
+
+// ── Импорт платежей ──────────────────────────────────────────────────────────
+
+export async function importPaymentsCsv(
+  _prev: ImportResult | null,
+  formData: FormData
+): Promise<ImportResult> {
+  try {
+    const actor = await requireManager();
+    const text = String(formData.get("csv") ?? "");
+    const { records } = parseCsv(text);
+    if (records.length === 0) return { ok: false, error: "Пустой CSV" };
+
+    const [services, settings, ratesRaw, existingPayments] = await Promise.all([
+      prisma.service.findMany({ select: { id: true, name: true, currency: true } }),
+      prisma.setting.upsert({
+        where: { id: "singleton" },
+        update: {},
+        create: { id: "singleton" },
+      }),
+      prisma.fxRate.findMany(),
+      prisma.payment.findMany({
+        select: { serviceId: true, paidAt: true, amount: true, currency: true },
+      }),
+    ]);
+    const base = settings.baseCurrency;
+    const rates: RateRecord[] = ratesRaw.map((r) => ({
+      date: r.date,
+      from: r.from,
+      to: r.to,
+      rate: r.rate,
+    }));
+    const svcByName = new Map(services.map((s) => [s.name.toLowerCase(), s]));
+
+    const dupKey = (serviceId: string, paidAt: string, amount: string, cur: string) =>
+      `${serviceId}|${paidAt}|${Number(amount)}|${cur}`;
+    const existingKeys = existingPayments.map((p) =>
+      dupKey(
+        p.serviceId,
+        p.paidAt.toISOString().slice(0, 10),
+        p.amount.toString(),
+        p.currency
+      )
+    );
+
+    const withMeta = records.map((r) => {
+      const svc = svcByName.get(pick(r, "service", "сервис").toLowerCase());
+      const paidAt = pick(r, "paid_at", "paidAt", "дата");
+      const amount = pick(r, "amount", "сумма");
+      const currency = pick(r, "currency", "валюта") || svc?.currency || base;
+      return { rec: r, svc, paidAt, amount, currency };
+    });
+
+    const { unique, duplicates } = partitionUnique(
+      withMeta,
+      (x) =>
+        x.svc ? dupKey(x.svc.id, x.paidAt, x.amount, x.currency) : `?|${x.paidAt}`,
+      existingKeys
+    );
+
+    const errors: string[] = [];
+    let created = 0;
+    for (const { rec, svc, paidAt, amount, currency } of unique) {
+      if (!svc) {
+        errors.push(`Сервис «${pick(rec, "service", "сервис")}» не найден`);
+        continue;
+      }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(paidAt)) {
+        errors.push(`Некорректная дата: ${paidAt || "—"}`);
+        continue;
+      }
+      if (!SUPPORTED_CURRENCIES.includes(currency as never)) {
+        errors.push(`Неизвестная валюта: ${currency}`);
+        continue;
+      }
+      const amt = Number(amount);
+      if (!(amt > 0)) {
+        errors.push(`«${svc.name}»: некорректная сумма`);
+        continue;
+      }
+      const paidAtDate = new Date(`${paidAt}T00:00:00.000Z`);
+      const amountDec = new Prisma.Decimal(amt);
+      const amountBase =
+        convert(amountDec, currency, base, paidAtDate, rates) ?? amountDec;
+      try {
+        const payment = await prisma.payment.create({
+          data: {
+            serviceId: svc.id,
+            paidAt: paidAtDate,
+            amount: amountDec,
+            currency,
+            amountBase,
+            source: "csv_import",
+            comment: pick(rec, "comment", "комментарий") || null,
+            invoiceUrl: pick(rec, "invoice_url", "invoiceUrl") || null,
+          },
+        });
+        created++;
+        await writeAudit({
+          entity: "Payment",
+          entityId: payment.id,
+          actor: actor.email ?? actor.id,
+          action: "import",
+          diff: { amount: amountDec.toString(), currency, source: "csv" },
+        });
+      } catch {
+        errors.push(`«${svc.name}» ${paidAt}: ошибка вставки`);
+      }
+    }
+
+    revalidatePath("/");
+    revalidatePath("/reports");
+    return { ok: true, created, skippedDuplicates: duplicates.length, errors };
+  } catch (e) {
+    if (e instanceof AuthorizationError) return { ok: false, error: e.message };
+    console.error("importPaymentsCsv:", e);
+    return { ok: false, error: "Не удалось импортировать платежи" };
   }
 }
