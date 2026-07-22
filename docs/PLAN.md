@@ -196,7 +196,7 @@
 ## Этап 2 — подтверждён пользователем, в работе
 
 - [x] **API-токены** (Блок 12): имя + роль, хэш в БД (sha256), показ значения один раз
-- [ ] REST API `/api/v1/*` (Блок 13)
+- [x] **REST API `/api/v1/*`** (Блок 13)
 - [ ] MCP-сервер на `/mcp` (Streamable HTTP, Bearer): полный набор инструментов §6 (Блок 14)
 - [ ] UI аудит-лога: общий журнал (Admin) + вкладка «История» в карточке сервиса (Блок 15)
 - [ ] ⌘K-палитра: поиск сервисов и быстрые действия (Блок 16)
@@ -209,6 +209,12 @@
 - Actions (Admin): `createApiToken` (значение возвращается **один раз**), `revokeApiToken`; аудит.
 - UI: вкладка «API-токены» в настройках — список (префикс, роль, использован, статус), создание с показом значения один раз + копирование, отзыв.
 - **Проверено:** `typecheck`/`lint`/`test` (59, +token)/`build` — зелёные; live-скрипт: создание → Bearer-аутентификация (role=manager) → неверный/отозванный → null, `lastUsedAt` проставлен.
+
+**Блок 13 — REST API (PR #13):**
+- Общий слой операций `lib/api/operations.ts` (§6): whoami, overview, list/get/create/update/archive services, list/add/end seats, list employees + costs, record/confirm payments, monthly report, costs_summary, upcoming_payments, needs_attention, export. Переиспользуется MCP (Блок 14).
+- 16 route-обработчиков `/api/v1/*` с Bearer-аутентификацией (`lib/api/handler.ts` `withActor`), маппинг `ApiError`→HTTP; запись требует `requireApiRole(manager)`. `middleware` исключает `/api/v1` и `/mcp` из session-редиректа.
+- Документация `docs/API.md`.
+- **Проверено:** `typecheck`/`lint`/`test` (59)/`build` — зелёные; live-curl: whoami, 401 без токена, **create_service viewer→403 / manager→200 (критерий №9)**, overview/needs-attention/upcoming/costs-summary — корректный JSON.
 
 ## Этап 3 — идеи вне скоупа (не делать без отдельного решения)
 - Синхронизация сотрудников из Google Workspace Admin SDK
