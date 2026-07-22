@@ -39,5 +39,19 @@ export async function register() {
     console.log("[cron:fx-update]", res.ok ? `обновлено ${res.updated} на ${res.date}` : `ошибка: ${res.error}`);
   });
 
+  // План-снапшот — 1-го числа в 00:05 APP_TZ (создаёт снапшот нового месяца).
+  new Cron("5 0 1 * *", { timezone: tz, name: "plan-snapshot" }, async () => {
+    const { generateSnapshot } = await import("@/lib/plan/generate-snapshot");
+    const now = new Date();
+    const res = await generateSnapshot({
+      year: now.getUTCFullYear(),
+      month0: now.getUTCMonth(),
+    });
+    console.log(
+      "[cron:plan-snapshot]",
+      res.created ? `создан ${res.month}: ${res.lines} строк` : `пропущен (${res.reason})`
+    );
+  });
+
   console.log(`[instrumentation] cron-задачи запланированы (TZ=${tz})`);
 }
