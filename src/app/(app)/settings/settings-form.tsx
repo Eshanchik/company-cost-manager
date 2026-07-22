@@ -63,6 +63,24 @@ export function SettingsForm({ settings }: { settings: Setting }) {
         </p>
       </div>
 
+      <div className="space-y-2">
+        <Label htmlFor="unusedSeatDays">
+          Порог «неиспользуемого» места, дней
+        </Label>
+        <Input
+          id="unusedSeatDays"
+          name="unusedSeatDays"
+          type="number"
+          min={1}
+          max={365}
+          defaultValue={settings.unusedSeatDays}
+        />
+        <p className="text-xs text-muted-foreground">
+          Место без отметки активности дольше этого срока попадает в «Требует
+          внимания» (по умолчанию 30).
+        </p>
+      </div>
+
       <SubmitButton>Сохранить</SubmitButton>
     </form>
   );

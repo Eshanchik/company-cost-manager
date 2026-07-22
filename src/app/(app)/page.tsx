@@ -4,6 +4,8 @@ import { AlertTriangle, CalendarClock } from "lucide-react";
 import { getCurrentUser, hasRole } from "@/lib/authz";
 import { getExpectedCharges } from "@/lib/plan/expected-charges";
 import { getDashboardMetrics } from "@/lib/dashboard/metrics";
+import { getUnusedSeats } from "@/lib/seats/unused";
+import { UnusedSeatsPanel } from "@/components/unused-seats-panel";
 import { formatMoney, formatDate } from "@/lib/format";
 import {
   Card,
@@ -22,12 +24,14 @@ export default async function DashboardPage() {
   const user = await getCurrentUser();
   const canEdit = user ? hasRole(user.role, "manager") : false;
 
-  const [m, expected] = await Promise.all([
+  const [m, expected, unused] = await Promise.all([
     getDashboardMetrics(),
     getExpectedCharges(),
+    getUnusedSeats(),
   ]);
 
-  const attentionCount = m.overdue.length + m.renewals.length;
+  const attentionCount =
+    m.overdue.length + m.renewals.length + unused.seats.length;
 
   return (
     <div className="space-y-6">
@@ -136,6 +140,7 @@ export default async function DashboardPage() {
                   </ul>
                 </div>
               )}
+              <UnusedSeatsPanel seats={unused.seats} canEdit={canEdit} />
             </div>
           )}
         </CardContent>

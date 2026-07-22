@@ -19,7 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { addSeat, endSeat, reopenSeat } from "@/lib/actions/seats";
+import { addSeat, endSeat, reopenSeat, markSeatUsed } from "@/lib/actions/seats";
 import { formatMoney, formatDate } from "@/lib/format";
 import type { ActionResult } from "@/lib/actions/types";
 
@@ -31,6 +31,7 @@ export type SeatRow = {
   seatPrice: number;
   startedAt: string;
   endedAt: string | null;
+  lastUsedAt: string | null;
 };
 
 export function SeatsPanel({
@@ -193,6 +194,7 @@ function SeatTable({
             <TableHead>Сотрудник</TableHead>
             <TableHead className="text-right">Цена/цикл</TableHead>
             <TableHead>Начало</TableHead>
+            {!closed && <TableHead>Активность</TableHead>}
             <TableHead>{closed ? "Закрыто" : "Действия"}</TableHead>
           </TableRow>
         </TableHeader>
@@ -214,11 +216,19 @@ function SeatTable({
                 {formatMoney(s.seatPrice, currency)}
               </TableCell>
               <TableCell className="text-sm">{formatDate(s.startedAt)}</TableCell>
+              {!closed && (
+                <TableCell className="text-sm text-muted-foreground">
+                  {s.lastUsedAt ? formatDate(s.lastUsedAt) : "нет отметки"}
+                </TableCell>
+              )}
               <TableCell>
                 {closed ? (
                   <Badge variant="outline">{formatDate(s.endedAt)}</Badge>
                 ) : canEdit ? (
-                  <EndSeatButton seatId={s.id} employee={s.employeeName} />
+                  <div className="flex gap-1">
+                    <MarkUsedButton seatId={s.id} />
+                    <EndSeatButton seatId={s.id} employee={s.employeeName} />
+                  </div>
                 ) : (
                   <span className="text-muted-foreground">—</span>
                 )}
@@ -228,6 +238,29 @@ function SeatTable({
         </TableBody>
       </Table>
     </div>
+  );
+}
+
+function MarkUsedButton({ seatId }: { seatId: string }) {
+  const [pending, startTransition] = useTransition();
+  const mark = () =>
+    startTransition(async () => {
+      const fd = new FormData();
+      fd.set("seatId", seatId);
+      const res = await markSeatUsed(null, fd);
+      if (res.ok) toast.success(res.message ?? "Отмечено");
+      else toast.error(res.error);
+    });
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      disabled={pending}
+      onClick={mark}
+      title="Отметить активность (сейчас)"
+    >
+      Активность
+    </Button>
   );
 }
 
