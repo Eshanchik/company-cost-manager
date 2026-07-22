@@ -30,6 +30,7 @@ import type {
 } from "@/components/service-dialog";
 import { ServiceHeaderActions } from "./service-header-actions";
 import { SeatsPanel, type SeatRow } from "./seats-panel";
+import { AddPaymentButton } from "./add-payment";
 
 const PAYMENT_SOURCE_LABEL: Record<string, string> = {
   manual: "Вручную",
@@ -299,7 +300,19 @@ export default async function ServiceDetailPage({
 
         <TabsContent value="payments">
           <Card>
-            <CardContent className="pt-6">
+            <CardContent className="space-y-4 pt-6">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-medium">
+                  Платежи ({service.payments.length})
+                </h3>
+                {canEdit && (
+                  <AddPaymentButton
+                    serviceId={service.id}
+                    currency={service.currency}
+                    today={new Date().toISOString().slice(0, 10)}
+                  />
+                )}
+              </div>
               {service.payments.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
                   Платежей пока нет.
