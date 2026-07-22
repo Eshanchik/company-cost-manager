@@ -20,19 +20,36 @@ import { parseCsv } from "@/lib/csv/parse";
 import {
   importServicesCsv,
   importSeatsCsv,
+  importPaymentsCsv,
   type ImportResult,
 } from "@/lib/actions/import";
 
-const HINTS: Record<"services" | "seats", string> = {
+type ImportKind = "services" | "seats" | "payments";
+
+const HINTS: Record<ImportKind, string> = {
   services:
     "Заголовки: name, billing_model (fixed|per_seat|hybrid), billing_cycle (monthly|yearly), currency, price, seat_price, billing_day, renewal_date, owner_email, category",
   seats: "Заголовки: service, email, seat_price, full_name",
+  payments:
+    "Заголовки: service, paid_at (YYYY-MM-DD), amount, currency, comment, invoice_url",
 };
 
-export function CsvImportDialog({ kind }: { kind: "services" | "seats" }) {
+const KIND_LABEL: Record<ImportKind, string> = {
+  services: "сервисов",
+  seats: "мест",
+  payments: "платежей",
+};
+
+const ACTIONS = {
+  services: importServicesCsv,
+  seats: importSeatsCsv,
+  payments: importPaymentsCsv,
+};
+
+export function CsvImportDialog({ kind }: { kind: ImportKind }) {
   const [open, setOpen] = React.useState(false);
   const [text, setText] = React.useState("");
-  const action = kind === "services" ? importServicesCsv : importSeatsCsv;
+  const action = ACTIONS[kind];
   const [state, formAction] = useActionState<ImportResult | null, FormData>(
     action,
     null
@@ -69,9 +86,7 @@ export function CsvImportDialog({ kind }: { kind: "services" | "seats" }) {
         <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
           <form action={formAction} className="space-y-4">
             <DialogHeader>
-              <DialogTitle>
-                Импорт {kind === "services" ? "сервисов" : "мест"} из CSV
-              </DialogTitle>
+              <DialogTitle>Импорт {KIND_LABEL[kind]} из CSV</DialogTitle>
               <DialogDescription>{HINTS[kind]}</DialogDescription>
             </DialogHeader>
 
@@ -87,7 +102,9 @@ export function CsvImportDialog({ kind }: { kind: "services" | "seats" }) {
                 placeholder={
                   kind === "services"
                     ? "name,billing_model,billing_cycle,currency,seat_price,billing_day,owner_email\nMiro,per_seat,monthly,USD,8,5,ivan.petrov@example.com"
-                    : "service,email,seat_price\nFigma,new.person@company.com,15"
+                    : kind === "seats"
+                      ? "service,email,seat_price\nFigma,new.person@company.com,15"
+                      : "service,paid_at,amount,currency\nFigma,2026-07-05,65,USD"
                 }
               />
             </div>

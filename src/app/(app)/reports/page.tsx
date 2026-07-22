@@ -8,6 +8,8 @@ import {
   type DeltaReason,
 } from "@/lib/report/monthly-report";
 import { formatMoney } from "@/lib/format";
+import { getCurrentUser, hasRole } from "@/lib/authz";
+import { CsvImportDialog } from "@/components/csv-import-dialog";
 import {
   Card,
   CardContent,
@@ -55,6 +57,8 @@ export default async function ReportsPage({
 
   const [y, m] = monthStr.split("-").map(Number);
   const report = await getMonthlyReport(y!, m! - 1, view);
+  const user = await getCurrentUser();
+  const canImport = user ? hasRole(user.role, "manager") : false;
 
   const money = (n: number) => formatMoney(n, report.base);
   const deltaClass = (d: number) =>
@@ -73,11 +77,14 @@ export default async function ReportsPage({
 
       <div className="flex flex-wrap items-end justify-between gap-3">
         <ReportControls month={monthStr} view={view} />
-        <Button asChild variant="ghost" size="sm">
-          <a href="/api/export?kind=payments" download>
-            <Download className="size-4" /> Экспорт всех платежей
-          </a>
-        </Button>
+        <div className="flex gap-2">
+          {canImport && <CsvImportDialog kind="payments" />}
+          <Button asChild variant="ghost" size="sm">
+            <a href="/api/export?kind=payments" download>
+              <Download className="size-4" /> Экспорт всех платежей
+            </a>
+          </Button>
+        </div>
       </div>
 
       {!report.hasSnapshot && (
