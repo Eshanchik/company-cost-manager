@@ -10,6 +10,9 @@ export default middleware((req) => {
 });
 
 export const config = {
-  // Пропускаем статику, изображения и служебные пути Next.
-  matcher: ["/((?!api/auth|_next/static|_next/image|favicon.ico).*)"],
+  // Пропускаем статику, служебные пути Next, а также API/MCP с токен-авторизацией
+  // (api/v1 и mcp аутентифицируются Bearer-токеном, не сессией).
+  matcher: [
+    "/((?!api/auth|api/v1|mcp|_next/static|_next/image|favicon.ico).*)",
+  ],
 };
