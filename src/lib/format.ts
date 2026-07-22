@@ -34,3 +34,12 @@ export function formatDate(date: Date | string | null | undefined): string {
   const yyyy = d.getUTCFullYear();
   return `${dd}.${mm}.${yyyy}`;
 }
+
+/** Дата и время DD.MM.YYYY HH:mm (UTC). */
+export function formatDateTime(date: Date | string | null | undefined): string {
+  if (!date) return "—";
+  const d = typeof date === "string" ? new Date(date) : date;
+  const hh = String(d.getUTCHours()).padStart(2, "0");
+  const mi = String(d.getUTCMinutes()).padStart(2, "0");
+  return `${formatDate(d)} ${hh}:${mi}`;
+}

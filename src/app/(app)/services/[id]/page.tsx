@@ -28,6 +28,7 @@ import type {
   ServiceDefaults,
   ServiceOptions,
 } from "@/components/service-dialog";
+import { AuditTable, type AuditRow } from "@/components/audit-table";
 import { ServiceHeaderActions } from "./service-header-actions";
 import { SeatsPanel, type SeatRow } from "./seats-panel";
 import { AddPaymentButton } from "./add-payment";
@@ -126,6 +127,21 @@ export default async function ServiceDetailPage({
   ]);
   const baseCurrency = settings.baseCurrency;
 
+  const auditLogs = await prisma.auditLog.findMany({
+    where: { entity: "Service", entityId: service.id },
+    orderBy: { ts: "desc" },
+    take: 100,
+  });
+  const historyRows: AuditRow[] = auditLogs.map((l) => ({
+    id: l.id,
+    ts: l.ts.toISOString(),
+    entity: l.entity,
+    entityId: l.entityId,
+    actor: l.actor,
+    action: l.action,
+    diff: l.diff,
+  }));
+
   const activeSeats = service.seats.filter((s) => !s.endedAt);
   const runRate = serviceMonthlyRunRate({
     billingModel: service.billingModel,
@@ -199,6 +215,7 @@ export default async function ServiceDetailPage({
           <TabsTrigger value="payments">
             Платежи ({service.payments.length})
           </TabsTrigger>
+          <TabsTrigger value="history">История</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview">
@@ -351,6 +368,14 @@ export default async function ServiceDetailPage({
                   </Table>
                 </div>
               )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="history">
+          <Card>
+            <CardContent className="pt-6">
+              <AuditTable rows={historyRows} showEntity={false} />
             </CardContent>
           </Card>
         </TabsContent>
