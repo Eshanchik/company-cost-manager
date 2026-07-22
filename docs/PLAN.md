@@ -25,13 +25,22 @@
 - **Проверено:** `typecheck`, `lint`, `test`, `build` — зелёные; `migrate deploy` + `seed` на живой Postgres (12/30/30/15); `npm run dev` отдаёт 200 на `/` и `/services`.
 - **Проверяет пользователь руками:** полный `docker compose up -d` (сборка образа app) — по агрегированной с пользователем договорённости про заглушки/секреты.
 
-### Блок 2. Аутентификация и роли
-- [ ] Auth.js v5 + Google provider
-- [ ] Whitelist `AllowedEmail`: вход только из списка; `ADMIN_EMAILS` из env сидятся при первом старте
-- [ ] Роли Viewer / Manager / Admin; серверные guard'ы на все мутации
-- [ ] Экран отказа в доступе с понятным сообщением
+### Блок 2. Аутентификация и роли ✅
+- [x] Auth.js v5 + Google provider
+- [x] Whitelist `AllowedEmail`: вход только из списка; `ADMIN_EMAILS` из env сидятся при первом старте
+- [x] Роли Viewer / Manager / Admin; серверные guard'ы на все мутации
+- [x] Экран отказа в доступе с понятным сообщением
 
 **Готово, когда:** выполняется критерий приёмки №8 (§9).
+
+**Сделано (PR #2):**
+- Auth.js v5 (`next-auth@beta`) + `@auth/prisma-adapter`, Google provider, JWT-сессии. Split-конфиг: `src/auth.config.ts` (edge-safe, для middleware) + `src/auth.ts` (Node, адаптер + callbacks). Route handler `/api/auth/[...nextauth]`.
+- Whitelist: `signIn`-callback пускает только email из `AllowedEmail` (проверка на каждый вход → добавление в whitelist открывает доступ без перезапуска, критерий №8). `ADMIN_EMAILS` сидятся в whitelist на старте через `src/instrumentation.ts`. Первый вход копирует роль из whitelist в `User` (`events.createUser`, §3.1).
+- Роли Viewer/Manager/Admin: чистый модуль `lib/roles.ts` (иерархия + `hasRole` + подписи) с unit-тестами; guard'ы `lib/authz.ts` (`requireUser`/`requireManager`/`requireAdmin`, `AuthorizationError`) — применяются к мутациям по мере их появления в след. блоках.
+- `middleware.ts` защищает все маршруты (кроме `/login`, `/denied`, `/api/auth`, статики) с редиректом на `/login`. Route-group `(app)` с серверной проверкой доступа + shell (навигация, тема, меню пользователя с ролью и выходом). Публичные `/login` (Google-кнопка) и `/denied` — без shell.
+- **Проверено:** `typecheck`/`lint`/`test` (7 тестов)/`build` — зелёные; на dev-сервере `/` и `/services` без сессии → 307 на `/login`; `/login` и `/denied` рендерятся; instrumentation засидил admin-whitelist на старте.
+- **Проверяет пользователь руками:** реальный вход через Google (нужны `AUTH_GOOGLE_ID/SECRET`) — по договорённости про заглушки/секреты.
+- ⚠️ Прим. по среде: порт 3000 у пользователя занят другим Docker-контейнером — dev/compose SubTrack поднимать на свободном порту.
 
 ### Блок 3. Справочники и настройки
 - [ ] CRUD категорий (name, color) — Admin
