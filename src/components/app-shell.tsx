@@ -23,7 +23,7 @@ export function AppShell({
           </Link>
         </div>
         <div className="flex-1 overflow-y-auto">
-          <MainNav />
+          <MainNav role={user.role} />
         </div>
       </aside>
       <div className="flex flex-1 flex-col">

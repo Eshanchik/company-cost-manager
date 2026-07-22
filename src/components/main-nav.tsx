@@ -11,12 +11,15 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { hasRole } from "@/lib/roles";
+import type { Role } from "@prisma/client";
 
 type NavItem = {
   href: string;
   label: string;
   icon: typeof LayoutDashboard;
   exact?: boolean;
+  adminOnly?: boolean;
 };
 
 const NAV_ITEMS: NavItem[] = [
@@ -24,15 +27,18 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/services", label: "Сервисы", icon: Boxes },
   { href: "/employees", label: "Сотрудники", icon: Users },
   { href: "/reports", label: "Отчёты", icon: FileBarChart },
-  { href: "/settings", label: "Настройки", icon: Settings },
+  { href: "/settings", label: "Настройки", icon: Settings, adminOnly: true },
 ];
 
-export function MainNav() {
+export function MainNav({ role }: { role: Role }) {
   const pathname = usePathname();
+  const items = NAV_ITEMS.filter(
+    (item) => !item.adminOnly || hasRole(role, "admin")
+  );
 
   return (
     <nav className="flex flex-col gap-1 px-2 py-4">
-      {NAV_ITEMS.map((item) => {
+      {items.map((item) => {
         const active = item.exact
           ? pathname === item.href
           : pathname === item.href || pathname.startsWith(`${item.href}/`);
