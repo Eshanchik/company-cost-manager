@@ -16,6 +16,7 @@ import { PaymentMethodsManager } from "./payment-methods-manager";
 import { SettingsForm } from "./settings-form";
 import { FxRatesManager, type FxRateRow } from "./fx-rates-manager";
 import { RebuildSnapshotButton } from "./snapshots-manager";
+import { TokensManager, type TokenRow } from "./tokens-manager";
 import { monthStart } from "@/lib/plan/generate-snapshot";
 import { forecastToEndOfMonth } from "@/lib/plan/forecast";
 import { formatMoney, formatDate } from "@/lib/format";
@@ -52,6 +53,18 @@ export default async function SettingsPage() {
     getSettings(),
     prisma.fxRate.findMany({ orderBy: { date: "desc" } }),
   ]);
+
+  const tokens: TokenRow[] = (
+    await prisma.apiToken.findMany({ orderBy: { createdAt: "desc" } })
+  ).map((t) => ({
+    id: t.id,
+    name: t.name,
+    role: t.role,
+    prefix: t.prefix,
+    createdAt: t.createdAt.toISOString(),
+    lastUsedAt: t.lastUsedAt?.toISOString() ?? null,
+    revokedAt: t.revokedAt?.toISOString() ?? null,
+  }));
 
   // Последний известный курс для каждой пары from→to.
   const latestByPair = new Map<string, FxRateRow>();
@@ -103,6 +116,7 @@ export default async function SettingsPage() {
           <TabsTrigger value="methods">Способы оплаты</TabsTrigger>
           <TabsTrigger value="fx">Курсы валют</TabsTrigger>
           <TabsTrigger value="plans">Планы</TabsTrigger>
+          <TabsTrigger value="tokens">API-токены</TabsTrigger>
           <TabsTrigger value="params">Параметры</TabsTrigger>
         </TabsList>
 
@@ -181,6 +195,20 @@ export default async function SettingsPage() {
                 </div>
               </div>
               <RebuildSnapshotButton />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="tokens">
+          <Card>
+            <CardHeader>
+              <CardTitle>API / MCP-токены</CardTitle>
+              <CardDescription>
+                Bearer-токены для REST API (`/api/v1/*`) и MCP-сервера (`/mcp`).
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <TokensManager tokens={tokens} />
             </CardContent>
           </Card>
         </TabsContent>
