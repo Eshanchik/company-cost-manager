@@ -14,6 +14,7 @@ import {
 import { CategoriesManager } from "./categories-manager";
 import { PaymentMethodsManager } from "./payment-methods-manager";
 import { SettingsForm } from "./settings-form";
+import { FxRatesManager, type FxRateRow } from "./fx-rates-manager";
 
 export default async function SettingsPage() {
   const user = await getCurrentUser();
@@ -39,13 +40,32 @@ export default async function SettingsPage() {
     );
   }
 
-  const [categories, methods, settings] = await Promise.all([
+  const [categories, methods, settings, fxRatesRaw] = await Promise.all([
     prisma.category.findMany({ orderBy: { name: "asc" } }),
     prisma.paymentMethod.findMany({
       orderBy: [{ isArchived: "asc" }, { name: "asc" }],
     }),
     getSettings(),
+    prisma.fxRate.findMany({ orderBy: { date: "desc" } }),
   ]);
+
+  // Последний известный курс для каждой пары from→to.
+  const latestByPair = new Map<string, FxRateRow>();
+  for (const r of fxRatesRaw) {
+    const key = `${r.from}-${r.to}`;
+    if (!latestByPair.has(key)) {
+      latestByPair.set(key, {
+        from: r.from,
+        to: r.to,
+        rate: r.rate.toString(),
+        date: r.date.toISOString(),
+      });
+    }
+  }
+  const fxRates = [...latestByPair.values()].sort((a, b) =>
+    `${a.from}${a.to}`.localeCompare(`${b.from}${b.to}`)
+  );
+  const today = new Date().toISOString().slice(0, 10);
 
   return (
     <div className="space-y-6">
@@ -60,6 +80,7 @@ export default async function SettingsPage() {
         <TabsList>
           <TabsTrigger value="categories">Категории</TabsTrigger>
           <TabsTrigger value="methods">Способы оплаты</TabsTrigger>
+          <TabsTrigger value="fx">Курсы валют</TabsTrigger>
           <TabsTrigger value="params">Параметры</TabsTrigger>
         </TabsList>
 
@@ -75,6 +96,18 @@ export default async function SettingsPage() {
           <Card>
             <CardContent className="pt-6">
               <PaymentMethodsManager methods={methods} />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="fx">
+          <Card>
+            <CardContent className="pt-6">
+              <FxRatesManager
+                baseCurrency={settings.baseCurrency}
+                rates={fxRates}
+                today={today}
+              />
             </CardContent>
           </Card>
         </TabsContent>
