@@ -1,6 +1,10 @@
+import { Download } from "lucide-react";
+
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser, hasRole } from "@/lib/authz";
 import { serviceMonthlyRunRate } from "@/lib/calc/service-cost";
+import { Button } from "@/components/ui/button";
+import { CsvImportDialog } from "@/components/csv-import-dialog";
 import { ServicesTable, type ServiceRow } from "./services-table";
 import type { ServiceOptions } from "@/components/service-dialog";
 
@@ -63,11 +67,22 @@ export default async function ServicesPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Сервисы</h1>
-        <p className="text-sm text-muted-foreground">
-          Подписки компании: стоимость, места, ответственные.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Сервисы</h1>
+          <p className="text-sm text-muted-foreground">
+            Подписки компании: стоимость, места, ответственные.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {canEdit && <CsvImportDialog kind="services" />}
+          {canEdit && <CsvImportDialog kind="seats" />}
+          <Button asChild variant="outline">
+            <a href="/api/export?kind=services" download>
+              <Download className="size-4" /> Экспорт CSV
+            </a>
+          </Button>
+        </div>
       </div>
       <ServicesTable rows={rows} options={options} canEdit={canEdit} />
     </div>

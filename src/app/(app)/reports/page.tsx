@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Download } from "lucide-react";
 
 import {
   getMonthlyReport,
@@ -14,6 +15,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -69,7 +71,14 @@ export default async function ReportsPage({
         </p>
       </div>
 
-      <ReportControls month={monthStr} view={view} />
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <ReportControls month={monthStr} view={view} />
+        <Button asChild variant="ghost" size="sm">
+          <a href="/api/export?kind=payments" download>
+            <Download className="size-4" /> Экспорт всех платежей
+          </a>
+        </Button>
+      </div>
 
       {!report.hasSnapshot && (
         <p className="rounded-md border border-dashed border-amber-500/50 bg-amber-500/5 p-3 text-sm text-muted-foreground">
