@@ -17,6 +17,7 @@ import { SettingsForm } from "./settings-form";
 import { FxRatesManager, type FxRateRow } from "./fx-rates-manager";
 import { RebuildSnapshotButton } from "./snapshots-manager";
 import { TokensManager, type TokenRow } from "./tokens-manager";
+import { AccessManager, type AccessRow } from "./access-manager";
 import { monthStart } from "@/lib/plan/generate-snapshot";
 import { forecastToEndOfMonth } from "@/lib/plan/forecast";
 import { formatMoney, formatDate } from "@/lib/format";
@@ -53,6 +54,24 @@ export default async function SettingsPage() {
     getSettings(),
     prisma.fxRate.findMany({ orderBy: { date: "desc" } }),
   ]);
+
+  const [allowedEmails, users] = await Promise.all([
+    prisma.allowedEmail.findMany({ orderBy: { createdAt: "asc" } }),
+    prisma.user.findMany({ select: { email: true } }),
+  ]);
+  const userEmails = new Set(
+    users.map((u) => u.email?.toLowerCase()).filter(Boolean)
+  );
+  const selfEmail = user?.email?.toLowerCase();
+  const accessRows: AccessRow[] = allowedEmails.map((a) => ({
+    id: a.id,
+    email: a.email,
+    role: a.role,
+    addedBy: a.addedBy,
+    createdAt: a.createdAt.toISOString(),
+    hasLoggedIn: userEmails.has(a.email.toLowerCase()),
+    isSelf: selfEmail === a.email.toLowerCase(),
+  }));
 
   const tokens: TokenRow[] = (
     await prisma.apiToken.findMany({ orderBy: { createdAt: "desc" } })
@@ -116,6 +135,7 @@ export default async function SettingsPage() {
           <TabsTrigger value="methods">Способы оплаты</TabsTrigger>
           <TabsTrigger value="fx">Курсы валют</TabsTrigger>
           <TabsTrigger value="plans">Планы</TabsTrigger>
+          <TabsTrigger value="access">Доступ</TabsTrigger>
           <TabsTrigger value="tokens">API-токены</TabsTrigger>
           <TabsTrigger value="params">Параметры</TabsTrigger>
         </TabsList>
@@ -195,6 +215,21 @@ export default async function SettingsPage() {
                 </div>
               </div>
               <RebuildSnapshotButton />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="access">
+          <Card>
+            <CardHeader>
+              <CardTitle>Доступ (whitelist и роли)</CardTitle>
+              <CardDescription>
+                Вход в систему — только по Google для приглашённых email. Здесь
+                управляете списком и ролями.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <AccessManager rows={accessRows} />
             </CardContent>
           </Card>
         </TabsContent>
