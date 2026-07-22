@@ -35,6 +35,19 @@ test("вход разрешён только из whitelist", async ({ page }) =
   await expect(page).toHaveURL(/\/login/);
 });
 
+test("⌘K-палитра: открывается и ищет сервисы", async ({ page }) => {
+  await login(page);
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Дашборд" })).toBeVisible();
+
+  // Открыть палитру по Ctrl/Cmd+K и найти сервис.
+  await page.keyboard.press("ControlOrMeta+KeyK");
+  const input = page.getByPlaceholder(/Поиск сервисов и действия/);
+  await expect(input).toBeVisible();
+  await input.fill("Figma");
+  await expect(page.getByRole("option", { name: /Figma/ }).first()).toBeVisible();
+});
+
 test("приёмочный сценарий: сервис → место → снапшот → платёж → отчёт", async ({
   page,
 }) => {
