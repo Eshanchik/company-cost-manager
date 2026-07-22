@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { Prisma } from "@prisma/client";
+import { Download } from "lucide-react";
 
 import { prisma } from "@/lib/prisma";
 import { normalizeToMonthly } from "@/lib/calc/service-cost";
 import { formatMoney } from "@/lib/format";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -58,12 +60,19 @@ export default async function EmployeesPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Сотрудники</h1>
-        <p className="text-sm text-muted-foreground">
-          Люди, на которых оформлены места. Стоимость мест — нормализованная за
-          месяц.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Сотрудники</h1>
+          <p className="text-sm text-muted-foreground">
+            Люди, на которых оформлены места. Стоимость мест — нормализованная за
+            месяц.
+          </p>
+        </div>
+        <Button asChild variant="outline">
+          <a href="/api/export?kind=employees" download>
+            <Download className="size-4" /> Экспорт CSV
+          </a>
+        </Button>
       </div>
 
       <div className="rounded-md border">

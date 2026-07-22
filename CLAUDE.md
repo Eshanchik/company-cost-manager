@@ -12,7 +12,7 @@ Next.js 15 (App Router) + TypeScript strict · PostgreSQL 16 + Prisma · Auth.js
 ## Команды (обновляй по мере появления)
 - `npm run dev` — дев-сервер
 - `npm test` — unit-тесты (Vitest)
-- `npm run test:e2e` — Playwright smoke
+- `npm run test:e2e` — Playwright smoke (нужен запущенный Postgres; вход через env-защищённый тест-провайдер `E2E_TEST_AUTH=1`, в проде отсутствует)
 - `npm run lint` — линтер
 - `npx prisma migrate dev` — миграции (dev), `npx prisma studio` — просмотр БД
 - `npm run db:seed` — демо-данные
