@@ -686,6 +686,106 @@ export async function needsAttention(_actor: ApiActor) {
   return { overdue_confirmations: overdue, renewals_in_window: renewals };
 }
 
+export async function importCsv(actor: ApiActor, body: unknown) {
+  requireApiRole(actor, "manager");
+  const input = z
+    .object({
+      kind: z.enum(["services", "seats"]),
+      csv: z.string().min(1),
+    })
+    .safeParse(body);
+  if (!input.success) throw new ApiError(400, input.error.issues[0]!.message);
+
+  const { parseCsv } = await import("@/lib/csv/parse");
+  const { partitionUnique } = await import("@/lib/csv/dedup");
+  const { records } = parseCsv(input.data.csv);
+  if (records.length === 0) throw new ApiError(400, "Пустой CSV");
+
+  const pick = (rec: Record<string, string>, ...keys: string[]) => {
+    for (const k of keys) {
+      const f = Object.keys(rec).find(
+        (h) => h.trim().toLowerCase() === k.toLowerCase()
+      );
+      if (f && rec[f]) return rec[f]!;
+    }
+    return "";
+  };
+
+  let created = 0;
+  const errors: string[] = [];
+
+  if (input.data.kind === "services") {
+    const existing = (
+      await prisma.service.findMany({ select: { name: true } })
+    ).map((s) => s.name);
+    const { unique, duplicates } = partitionUnique(
+      records,
+      (r) => pick(r, "name"),
+      existing
+    );
+    for (const rec of unique) {
+      try {
+        await createService(actor, {
+          name: pick(rec, "name"),
+          billing_model: pick(rec, "billing_model"),
+          billing_cycle: pick(rec, "billing_cycle"),
+          currency: pick(rec, "currency") || "USD",
+          price: pick(rec, "price") || 0,
+          seat_price_default: pick(rec, "seat_price") || undefined,
+          billing_day: pick(rec, "billing_day") || undefined,
+          renewal_date: pick(rec, "renewal_date") || undefined,
+          owner_email: pick(rec, "owner_email"),
+          category: pick(rec, "category") || undefined,
+        });
+        created++;
+      } catch (e) {
+        errors.push(
+          `«${pick(rec, "name")}»: ${e instanceof ApiError ? e.message : "ошибка"}`
+        );
+      }
+    }
+    return { kind: "services", created, skipped_duplicates: duplicates.length, errors };
+  }
+
+  // seats
+  const existingSeats = (
+    await prisma.seat.findMany({
+      where: { endedAt: null },
+      select: { serviceId: true, employee: { select: { email: true } } },
+    })
+  ).map((s) => `${s.serviceId}|${s.employee.email.toLowerCase()}`);
+  const services = await prisma.service.findMany({ select: { id: true, name: true } });
+  const svcByName = new Map(services.map((s) => [s.name.toLowerCase(), s.id]));
+  const withKey = records.map((r) => ({
+    rec: r,
+    serviceId: svcByName.get(pick(r, "service").toLowerCase()),
+    email: pick(r, "email").toLowerCase(),
+  }));
+  const { unique, duplicates } = partitionUnique(
+    withKey,
+    (x) => `${x.serviceId ?? "?"}|${x.email}`,
+    existingSeats
+  );
+  for (const { rec, serviceId, email } of unique) {
+    if (!serviceId) {
+      errors.push(`Сервис «${pick(rec, "service")}» не найден`);
+      continue;
+    }
+    try {
+      await addSeat(actor, {
+        service_id: serviceId,
+        email,
+        full_name: pick(rec, "full_name") || undefined,
+        seat_price: pick(rec, "seat_price") || undefined,
+      });
+      created++;
+    } catch (e) {
+      errors.push(`${email}: ${e instanceof ApiError ? e.message : "ошибка"}`);
+    }
+  }
+  return { kind: "seats", created, skipped_duplicates: duplicates.length, errors };
+}
+
 export async function exportData(
   _actor: ApiActor,
   params: { kind?: string; format?: string }

@@ -45,5 +45,29 @@ curl -X POST https://<host>/api/v1/services \
 `400` — ошибка валидации; `404` — не найдено; `409` — конфликт (напр. место уже
 активно).
 
-> MCP-сервер `/mcp` (Streamable HTTP, Bearer) предоставляет те же операции как
-> набор инструментов — см. `docs/SPEC.md` §6.
+## MCP-сервер `/mcp`
+
+Streamable HTTP (JSON-RPC 2.0), заголовок `Authorization: Bearer <token>`. Тот же
+слой операций, что и REST — **20 инструментов** (§6): `whoami`, `overview`,
+`list_services`, `get_service`, `create_service`, `update_service`,
+`set_service_archived`, `list_seats`, `add_seat`, `end_seat`, `list_employees`,
+`get_employee_costs`, `record_payment`, `confirm_expected_payment`,
+`get_monthly_report`, `costs_summary`, `upcoming_payments`, `needs_attention`,
+`import_csv`, `export_data`. Инструменты записи требуют Manager+ (иначе результат
+с `isError: true`).
+
+```bash
+# список инструментов
+curl -X POST https://<host>/mcp -H "Authorization: Bearer st_…" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+
+# вызов инструмента
+curl -X POST https://<host>/mcp -H "Authorization: Bearer st_…" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/call",
+       "params":{"name":"overview","arguments":{}}}'
+```
+
+Поддерживаются методы `initialize`, `tools/list`, `tools/call`, `ping`;
+уведомления (`notifications/initialized`) → `202`.
