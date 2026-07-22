@@ -15,6 +15,10 @@ import { CategoriesManager } from "./categories-manager";
 import { PaymentMethodsManager } from "./payment-methods-manager";
 import { SettingsForm } from "./settings-form";
 import { FxRatesManager, type FxRateRow } from "./fx-rates-manager";
+import { RebuildSnapshotButton } from "./snapshots-manager";
+import { monthStart } from "@/lib/plan/generate-snapshot";
+import { forecastToEndOfMonth } from "@/lib/plan/forecast";
+import { formatMoney, formatDate } from "@/lib/format";
 
 export default async function SettingsPage() {
   const user = await getCurrentUser();
@@ -67,6 +71,23 @@ export default async function SettingsPage() {
   );
   const today = new Date().toISOString().slice(0, 10);
 
+  // План-снапшот текущего месяца + прогноз до конца месяца.
+  const now = new Date();
+  const currentMonth = monthStart(now.getUTCFullYear(), now.getUTCMonth());
+  const [snapshot, forecast] = await Promise.all([
+    prisma.planSnapshot.findUnique({
+      where: { month: currentMonth },
+      include: { _count: { select: { lines: true } }, lines: true },
+    }),
+    forecastToEndOfMonth(now),
+  ]);
+  const snapshotTotal = snapshot
+    ? snapshot.lines.reduce((acc, l) => acc + l.amountBase.toNumber(), 0)
+    : 0;
+  const monthLabel = `${now.getUTCFullYear()}-${String(
+    now.getUTCMonth() + 1
+  ).padStart(2, "0")}`;
+
   return (
     <div className="space-y-6">
       <div>
@@ -81,6 +102,7 @@ export default async function SettingsPage() {
           <TabsTrigger value="categories">Категории</TabsTrigger>
           <TabsTrigger value="methods">Способы оплаты</TabsTrigger>
           <TabsTrigger value="fx">Курсы валют</TabsTrigger>
+          <TabsTrigger value="plans">Планы</TabsTrigger>
           <TabsTrigger value="params">Параметры</TabsTrigger>
         </TabsList>
 
@@ -108,6 +130,57 @@ export default async function SettingsPage() {
                 rates={fxRates}
                 today={today}
               />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="plans">
+          <Card>
+            <CardHeader>
+              <CardTitle>План-снапшот месяца {monthLabel}</CardTitle>
+              <CardDescription>
+                Снапшот фиксирует план 1-го числа (§3.8) и задним числом не
+                меняется. Прогноз считается по живым данным.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="flex flex-wrap gap-x-10 gap-y-4">
+                <div>
+                  <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                    Статус снапшота
+                  </div>
+                  <div className="mt-1 font-medium">
+                    {snapshot
+                      ? `Собран ${formatDate(snapshot.createdAt)} · ${snapshot._count.lines} строк`
+                      : "Ещё не собран"}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                    План (снапшот), {forecast.base}
+                  </div>
+                  <div className="mt-1 font-medium">
+                    {snapshot ? formatMoney(snapshotTotal, forecast.base) : "—"}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                    Прогноз месяца (живой), {forecast.base}
+                  </div>
+                  <div className="mt-1 font-medium">
+                    {formatMoney(forecast.monthTotal.toNumber(), forecast.base)}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                    Осталось до конца месяца
+                  </div>
+                  <div className="mt-1 font-medium">
+                    {formatMoney(forecast.remaining.toNumber(), forecast.base)}
+                  </div>
+                </div>
+              </div>
+              <RebuildSnapshotButton />
             </CardContent>
           </Card>
         </TabsContent>
