@@ -194,6 +194,29 @@ export async function reopenSeat(
   }
 }
 
+/** Отметить активность места (last_used_at = сейчас) — Manager+. */
+export async function markSeatUsed(
+  _prev: ActionResult | null,
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    await requireManager();
+    const seatId = String(formData.get("seatId") ?? "");
+    if (!seatId) return fail("Не указано место");
+    const seat = await prisma.seat.findUnique({ where: { id: seatId } });
+    if (!seat) return fail("Место не найдено");
+    await prisma.seat.update({
+      where: { id: seatId },
+      data: { lastUsedAt: new Date() },
+    });
+    revalidatePath(`/services/${seat.serviceId}`);
+    revalidatePath("/");
+    return ok("Активность отмечена");
+  } catch (e) {
+    return toError(e, "отметить активность");
+  }
+}
+
 class ActiveSeatExists extends Error {}
 
 function toError(e: unknown, verb: string): ActionResult {

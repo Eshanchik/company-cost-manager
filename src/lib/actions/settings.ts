@@ -12,6 +12,7 @@ import { SUPPORTED_CURRENCIES } from "@/lib/currencies";
 const schema = z.object({
   baseCurrency: z.enum(SUPPORTED_CURRENCIES),
   confirmationOverdueDays: z.coerce.number().int().min(0).max(60),
+  unusedSeatDays: z.coerce.number().int().min(1).max(365),
 });
 
 /** Гарантирует наличие singleton-строки настроек и возвращает её. */
@@ -32,6 +33,7 @@ export async function updateSettings(
     const parsed = schema.safeParse({
       baseCurrency: formData.get("baseCurrency"),
       confirmationOverdueDays: formData.get("confirmationOverdueDays"),
+      unusedSeatDays: formData.get("unusedSeatDays"),
     });
     if (!parsed.success) return fail(parsed.error.issues[0]!.message);
 
@@ -48,6 +50,7 @@ export async function updateSettings(
       diff: buildDiff(before, updated, [
         "baseCurrency",
         "confirmationOverdueDays",
+        "unusedSeatDays",
       ]),
     });
     revalidatePath("/settings");

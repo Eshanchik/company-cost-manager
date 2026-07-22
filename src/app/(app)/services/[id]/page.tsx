@@ -168,6 +168,7 @@ export default async function ServiceDetailPage({
     seatPrice: s.seatPrice.toNumber(),
     startedAt: s.startedAt.toISOString(),
     endedAt: s.endedAt?.toISOString() ?? null,
+    lastUsedAt: s.lastUsedAt?.toISOString() ?? null,
   }));
 
   return (

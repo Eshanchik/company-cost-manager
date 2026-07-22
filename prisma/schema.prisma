@@ -227,6 +227,7 @@ model Seat {
   seatPrice  Decimal   @db.Decimal(18, 6)
   startedAt  DateTime  @default(now())
   endedAt    DateTime?
+  lastUsedAt DateTime?
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
@@ -348,6 +349,7 @@ model Setting {
   id                    String   @id @default("singleton")
   baseCurrency          String   @default("USD")
   confirmationOverdueDays Int    @default(5)
+  unusedSeatDays        Int      @default(30)
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
