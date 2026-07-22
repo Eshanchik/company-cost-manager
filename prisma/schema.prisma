@@ -353,3 +353,21 @@ model Setting {
 
   @@map("setting")
 }
+
+// ----------------------------------------------------------------------------
+// API/MCP-токены (§1) — значение показывается один раз, в БД только хэш
+// ----------------------------------------------------------------------------
+
+model ApiToken {
+  id         String    @id @default(cuid())
+  name       String
+  role       Role      @default(viewer)
+  tokenHash  String    @unique
+  prefix     String // первые символы токена для отображения
+  createdBy  String?
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@map("api_token")
+}
