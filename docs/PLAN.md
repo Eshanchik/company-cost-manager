@@ -197,7 +197,7 @@
 
 - [x] **API-токены** (Блок 12): имя + роль, хэш в БД (sha256), показ значения один раз
 - [x] **REST API `/api/v1/*`** (Блок 13)
-- [ ] MCP-сервер на `/mcp` (Streamable HTTP, Bearer): полный набор инструментов §6 (Блок 14)
+- [x] **MCP-сервер на `/mcp`** (Streamable HTTP, Bearer): полный набор инструментов §6 (Блок 14)
 - [ ] UI аудит-лога: общий журнал (Admin) + вкладка «История» в карточке сервиса (Блок 15)
 - [ ] ⌘K-палитра: поиск сервисов и быстрые действия (Блок 16)
 - [ ] Офбординг-флоу сотрудника — §4.6 (Блок 17)
@@ -215,6 +215,12 @@
 - 16 route-обработчиков `/api/v1/*` с Bearer-аутентификацией (`lib/api/handler.ts` `withActor`), маппинг `ApiError`→HTTP; запись требует `requireApiRole(manager)`. `middleware` исключает `/api/v1` и `/mcp` из session-редиректа.
 - Документация `docs/API.md`.
 - **Проверено:** `typecheck`/`lint`/`test` (59)/`build` — зелёные; live-curl: whoami, 401 без токена, **create_service viewer→403 / manager→200 (критерий №9)**, overview/needs-attention/upcoming/costs-summary — корректный JSON.
+
+**Блок 14 — MCP-сервер (PR #14):**
+- `/mcp` — Streamable HTTP (JSON-RPC 2.0), Bearer-токен; методы `initialize`/`tools/list`/`tools/call`/`ping`, уведомления → 202.
+- `lib/mcp/server.ts` — **20 инструментов §6** поверх того же слоя операций, что REST; инструменты записи требуют Manager+ (иначе `isError: true`). CSV-выгрузка возвращается как текст.
+- Документация MCP в `docs/API.md`.
+- **Проверено:** `typecheck`/`lint`/`test` (59)/`build` — зелёные; live-curl: `initialize`, 401 без токена, `tools/list` (20 инструментов), `whoami` любым токеном, **`create_service` viewer→`isError` / manager→ok (критерий №9)**, `notifications/initialized`→202.
 
 ## Этап 3 — идеи вне скоупа (не делать без отдельного решения)
 - Синхронизация сотрудников из Google Workspace Admin SDK
