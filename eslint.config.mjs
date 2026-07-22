@@ -14,6 +14,20 @@ const eslintConfig = [
   {
     ignores: [".next/**", "node_modules/**", "prisma/migrations/**"],
   },
+  {
+    rules: {
+      // Аргументы/переменные с префиксом _ намеренно не используются
+      // (напр. сигнатура (prevState, formData) для useActionState).
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
+        },
+      ],
+    },
+  },
 ];
 
 export default eslintConfig;
