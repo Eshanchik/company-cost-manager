@@ -26,14 +26,37 @@ services:
       timeout: 5s
       retries: 10
 
+  # One-shot миграции на полном builder-образе (в тонком standalone-образе нет
+  # транзитивных зависимостей prisma CLI). Слои общие с app — диск почти не растёт.
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder
+    command: ["node", "node_modules/prisma/build/index.js", "migrate", "deploy"]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "postgresql://subtrack:${POSTGRES_PASSWORD}@postgres:5432/subtrack?schema=public"
+    networks:
+      - db
+
   app:
     build:
       context: .
       dockerfile: Dockerfile
     restart: unless-stopped
+    # Миграции выполняет сервис migrate; app лишь запускает сервер (минуя
+    # docker-entrypoint.sh, чтобы не звать prisma CLI из тонкого образа).
+    entrypoint: ["node"]
+    command: ["server.js"]
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     environment:
       DATABASE_URL: "postgresql://subtrack:${POSTGRES_PASSWORD}@postgres:5432/subtrack?schema=public"
       AUTH_SECRET: "${AUTH_SECRET:?AUTH_SECRET не задан в .env}"
