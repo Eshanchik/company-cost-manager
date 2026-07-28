@@ -1,0 +1,67 @@
+# SubTrack — прод-развёртывание рядом с существующим reverse-proxy (Caddy).
+# Порты наружу НЕ публикуются: доступ только через Caddy по внутренней сети.
+# БД изолирована во внутренней сети (недоступна извне и из чужих контейнеров).
+#
+# Внешняя сеть `web` = сеть, в которой уже живёт Caddy (напр. outline_internal).
+# Caddy обращается к приложению по алиасу `subtrack-app:3000`.
+#
+#   docker compose -f docker-compose.prod.yml up -d --build
+name: subtrack
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: subtrack
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD не задан в .env}
+      POSTGRES_DB: subtrack
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - db
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U subtrack -d subtrack"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "postgresql://subtrack:${POSTGRES_PASSWORD}@postgres:5432/subtrack?schema=public"
+      AUTH_SECRET: "${AUTH_SECRET:?AUTH_SECRET не задан в .env}"
+      AUTH_GOOGLE_ID: "${AUTH_GOOGLE_ID:-}"
+      AUTH_GOOGLE_SECRET: "${AUTH_GOOGLE_SECRET:-}"
+      AUTH_URL: "${AUTH_URL:?AUTH_URL не задан в .env}"
+      NEXTAUTH_URL: "${AUTH_URL}"
+      AUTH_TRUST_HOST: "true"
+      ADMIN_EMAILS: "${ADMIN_EMAILS:-}"
+      APP_TZ: "${APP_TZ:-Europe/Kyiv}"
+      BASE_CURRENCY: "${BASE_CURRENCY:-USD}"
+      # Прод: демо-данные НЕ засеваются (админы whitelist'а — из ADMIN_EMAILS).
+      SEED_ON_START: "false"
+      NODE_ENV: "production"
+    networks:
+      db:
+      web:
+        aliases:
+          - subtrack-app
+
+networks:
+  # Внутренняя сеть БД: недоступна снаружи.
+  db:
+    internal: true
+  # Существующая сеть Caddy (задаётся при развёртывании — см. docs/DEPLOY.md).
+  web:
+    external: true
+    name: ${CADDY_NETWORK:-outline_internal}
+
+volumes:
+  pgdata:
