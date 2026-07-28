@@ -2,7 +2,9 @@
 set -e
 
 echo "→ Применяю миграции базы данных (prisma migrate deploy)…"
-node_modules/.bin/prisma migrate deploy
+# Зовём CLI по прямому пути пакета: symlink node_modules/.bin/prisma при копии в
+# standalone-образ разрешается в файл, и CLI не находит рядом свой .wasm.
+node node_modules/prisma/build/index.js migrate deploy
 
 # Идемпотентный сид демо-данными (безопасно при повторном старте).
 # В контейнере нет tsx (devDependency) — исполняем seed нативным Node
