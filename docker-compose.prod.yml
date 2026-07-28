@@ -19,7 +19,11 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     networks:
-      - db
+      db:
+        # Уникальный алиас: имя `postgres` может конфликтовать с чужим стеком
+        # в общей сети Caddy (напр. postgres вики). Подключаемся по нему.
+        aliases:
+          - subtrack-postgres
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U subtrack -d subtrack"]
       interval: 5s
@@ -39,7 +43,7 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      DATABASE_URL: "postgresql://subtrack:${POSTGRES_PASSWORD}@postgres:5432/subtrack?schema=public"
+      DATABASE_URL: "postgresql://subtrack:${POSTGRES_PASSWORD}@subtrack-postgres:5432/subtrack?schema=public"
     networks:
       - db
 
@@ -58,7 +62,7 @@ services:
       migrate:
         condition: service_completed_successfully
     environment:
-      DATABASE_URL: "postgresql://subtrack:${POSTGRES_PASSWORD}@postgres:5432/subtrack?schema=public"
+      DATABASE_URL: "postgresql://subtrack:${POSTGRES_PASSWORD}@subtrack-postgres:5432/subtrack?schema=public"
       AUTH_SECRET: "${AUTH_SECRET:?AUTH_SECRET не задан в .env}"
       AUTH_GOOGLE_ID: "${AUTH_GOOGLE_ID:-}"
       AUTH_GOOGLE_SECRET: "${AUTH_GOOGLE_SECRET:-}"
