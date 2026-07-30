@@ -6,6 +6,7 @@ import { getExpectedCharges } from "@/lib/plan/expected-charges";
 import { getDashboardMetrics } from "@/lib/dashboard/metrics";
 import { getUnusedSeats } from "@/lib/seats/unused";
 import { UnusedSeatsPanel } from "@/components/unused-seats-panel";
+import { OnboardingEmpty } from "@/components/onboarding-empty";
 import { formatMoney, formatDate } from "@/lib/format";
 import {
   Card,
@@ -32,6 +33,21 @@ export default async function DashboardPage() {
 
   const attentionCount =
     m.overdue.length + m.renewals.length + unused.seats.length;
+
+  // Пустой инстанс — вместо нулевых KPI показываем онбординг.
+  if (m.activeServices === 0 && m.monthFact === 0) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Дашборд</h1>
+          <p className="text-sm text-muted-foreground">
+            Обзор расходов на подписки.
+          </p>
+        </div>
+        <OnboardingEmpty canEdit={canEdit} />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
