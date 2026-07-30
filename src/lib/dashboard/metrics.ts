@@ -15,7 +15,13 @@ export type RenewalWindow = {
   daysLeft: number;
 };
 
-export type MonthPoint = { month: string; plan: number; fact: number };
+export type MonthPoint = {
+  month: string;
+  /** null — снапшота за месяц не было (план не фиксировался), а не «ноль». */
+  plan: number | null;
+  fact: number;
+  hasSnapshot: boolean;
+};
 export type CategorySlice = { name: string; color: string; value: number };
 export type TopService = { name: string; value: number };
 
@@ -177,10 +183,12 @@ export async function getDashboardMetrics(
       Date.UTC(asOf.getUTCFullYear(), asOf.getUTCMonth() - 11 + i, 1)
     );
     const k = ymKey(dt);
+    const planValue = planByMonth.get(k);
     planFact12.push({
       month: k,
-      plan: Math.round((planByMonth.get(k) ?? 0) * 100) / 100,
+      plan: planValue === undefined ? null : Math.round(planValue * 100) / 100,
       fact: Math.round((factByMonth.get(k) ?? 0) * 100) / 100,
+      hasSnapshot: planValue !== undefined,
     });
   }
 

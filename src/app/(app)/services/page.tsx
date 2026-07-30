@@ -3,6 +3,7 @@ import { Download } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser, hasRole } from "@/lib/authz";
 import { serviceMonthlyRunRate } from "@/lib/calc/service-cost";
+import { convert, type RateRecord } from "@/lib/calc/fx";
 import { Button } from "@/components/ui/button";
 import { CsvImportDialog } from "@/components/csv-import-dialog";
 import { ServicesTable, type ServiceRow } from "./services-table";
@@ -16,22 +17,47 @@ export default async function ServicesPage() {
   const user = await getCurrentUser();
   const canEdit = user ? hasRole(user.role, "manager") : false;
 
-  const [services, categories, users, methods] = await Promise.all([
-    prisma.service.findMany({
-      include: {
-        category: true,
-        owner: true,
-        paymentMethod: true,
-        seats: { where: { endedAt: null } },
-      },
-      orderBy: { name: "asc" },
-    }),
-    prisma.category.findMany({ orderBy: { name: "asc" } }),
-    prisma.user.findMany({ orderBy: { name: "asc" } }),
-    prisma.paymentMethod.findMany({ orderBy: { name: "asc" } }),
-  ]);
+  const [services, categories, users, methods, settings, ratesRaw] =
+    await Promise.all([
+      prisma.service.findMany({
+        include: {
+          category: true,
+          owner: true,
+          paymentMethod: true,
+          seats: { where: { endedAt: null } },
+        },
+        orderBy: { name: "asc" },
+      }),
+      prisma.category.findMany({ orderBy: { name: "asc" } }),
+      prisma.user.findMany({ orderBy: { name: "asc" } }),
+      prisma.paymentMethod.findMany({ orderBy: { name: "asc" } }),
+      prisma.setting.upsert({
+        where: { id: "singleton" },
+        update: {},
+        create: { id: "singleton" },
+      }),
+      prisma.fxRate.findMany(),
+    ]);
 
-  const rows: ServiceRow[] = services.map((s) => ({
+  const baseCurrency = settings.baseCurrency;
+  const rates: RateRecord[] = ratesRaw.map((r) => ({
+    date: r.date,
+    from: r.from,
+    to: r.to,
+    rate: r.rate,
+  }));
+  const now = new Date();
+
+  const rows: ServiceRow[] = services.map((s) => {
+    const runRate = serviceMonthlyRunRate({
+      billingModel: s.billingModel,
+      billingCycle: s.billingCycle,
+      price: s.price,
+      seats: s.seats,
+    });
+    // §4.7: в таблицах и итогах — базовая валюта; исходная сумма — в тултипе.
+    const converted = convert(runRate, s.currency, baseCurrency, now, rates);
+    return {
     id: s.id,
     name: s.name,
     vendorUrl: s.vendorUrl,
@@ -39,12 +65,9 @@ export default async function ServicesPage() {
     categoryName: s.category?.name ?? null,
     billingModel: s.billingModel,
     billingCycle: s.billingCycle,
-    runRateMonthly: serviceMonthlyRunRate({
-      billingModel: s.billingModel,
-      billingCycle: s.billingCycle,
-      price: s.price,
-      seats: s.seats,
-    }).toNumber(),
+    runRateMonthly: runRate.toNumber(),
+    runRateBase: (converted ?? runRate).toNumber(),
+    hasRate: s.currency === baseCurrency || converted !== null,
     currency: s.currency,
     seatsCount: s.seats.length,
     ownerId: s.ownerId,
@@ -53,7 +76,8 @@ export default async function ServicesPage() {
     paymentMethodName: s.paymentMethod?.name ?? null,
     nextPaymentDate: s.nextPaymentDate?.toISOString() ?? null,
     status: s.status,
-  }));
+    };
+  });
 
   const options: ServiceOptions = {
     categories: categories.map((c) => ({ id: c.id, name: c.name })),
@@ -84,7 +108,12 @@ export default async function ServicesPage() {
           </Button>
         </div>
       </div>
-      <ServicesTable rows={rows} options={options} canEdit={canEdit} />
+      <ServicesTable
+        rows={rows}
+        options={options}
+        canEdit={canEdit}
+        baseCurrency={baseCurrency}
+      />
     </div>
   );
 }

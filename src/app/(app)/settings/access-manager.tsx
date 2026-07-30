@@ -6,7 +6,6 @@ import { UserPlus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import type { Role } from "@prisma/client";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +21,7 @@ import {
 } from "@/components/ui/table";
 import { formatDate } from "@/lib/format";
 import { ROLE_LABEL } from "@/lib/roles";
+import { ConfirmAction } from "@/components/confirm-action";
 import {
   inviteEmail,
   updateAllowedRole,
@@ -182,34 +182,23 @@ function RoleForm({ id, role }: { id: string; role: Role }) {
 }
 
 function RemoveButton({ id, email }: { id: string; email: string }) {
-  const [state, formAction] = useActionState<ActionResult | null, FormData>(
-    removeAllowedEmail,
-    null
-  );
-
-  React.useEffect(() => {
-    if (!state) return;
-    if (state.ok) toast.success(state.message ?? "Отозвано");
-    else toast.error(state.error);
-  }, [state]);
-
   return (
-    <form
-      action={formAction}
-      onSubmit={(e) => {
-        if (!confirm(`Отозвать доступ для ${email}?`)) e.preventDefault();
+    <ConfirmAction
+      title={`Отозвать доступ для ${email}?`}
+      description="Пользователь больше не сможет войти. Приглашение можно выдать заново."
+      confirmLabel="Отозвать"
+      destructive
+      variant="ghost"
+      size="icon"
+      aria-label="Отозвать доступ"
+      className="text-destructive hover:text-destructive"
+      onConfirm={async () => {
+        const fd = new FormData();
+        fd.set("id", id);
+        return removeAllowedEmail(null, fd);
       }}
     >
-      <input type="hidden" name="id" value={id} />
-      <Button
-        type="submit"
-        variant="ghost"
-        size="icon"
-        aria-label="Отозвать доступ"
-        className="text-destructive hover:text-destructive"
-      >
-        <Trash2 className="size-4" />
-      </Button>
-    </form>
+      <Trash2 className="size-4" />
+    </ConfirmAction>
   );
 }

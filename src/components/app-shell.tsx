@@ -3,6 +3,7 @@ import { Wallet } from "lucide-react";
 
 import { prisma } from "@/lib/prisma";
 import { MainNav } from "@/components/main-nav";
+import { MobileNav } from "@/components/mobile-nav";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { UserMenu } from "@/components/user-menu";
 import { CommandPalette } from "@/components/command-palette";
@@ -36,7 +37,10 @@ export async function AppShell({
       </aside>
       <div className="flex flex-1 flex-col">
         <header className="flex h-14 items-center justify-between border-b px-4">
-          <div className="text-sm text-muted-foreground md:hidden">SubTrack</div>
+          <div className="flex items-center gap-2 md:hidden">
+            <MobileNav role={user.role} />
+            <span className="text-sm font-medium">SubTrack</span>
+          </div>
           <CommandPalette services={services} role={user.role} />
           <div className="ml-auto flex items-center gap-2">
             <ThemeToggle />

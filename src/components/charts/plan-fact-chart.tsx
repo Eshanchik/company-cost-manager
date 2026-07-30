@@ -21,9 +21,17 @@ export function PlanFactChart({
   base: string;
 }) {
   const short = data.map((d) => ({ ...d, label: d.month.slice(2) })); // YY-MM
+  const missing = short.filter((d) => !d.hasSnapshot).length;
 
   return (
-    <ResponsiveContainer width="100%" height={280}>
+    <>
+      {missing > 0 && (
+        <p className="mb-2 text-xs text-muted-foreground">
+          За {missing} из {short.length} мес. план-снапшота не было — столбец
+          плана не рисуется (это не нулевой план). Снапшот собирается 1-го числа.
+        </p>
+      )}
+      <ResponsiveContainer width="100%" height={280}>
       <BarChart data={short} margin={{ top: 8, right: 8, bottom: 0, left: 8 }}>
         <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
         <XAxis
@@ -43,7 +51,12 @@ export function PlanFactChart({
             formatMoney(v, base),
             name === "plan" ? "План" : "Факт",
           ]}
-          labelFormatter={(l) => `20${l}`}
+          labelFormatter={(l) => {
+            const point = short.find((p) => p.label === l);
+            return point && !point.hasSnapshot
+              ? `20${l} · снапшота плана не было`
+              : `20${l}`;
+          }}
           contentStyle={{
             background: "hsl(var(--popover))",
             border: "1px solid hsl(var(--border))",
@@ -55,6 +68,7 @@ export function PlanFactChart({
         <Bar dataKey="plan" name="plan" fill="hsl(var(--muted-foreground))" radius={[3, 3, 0, 0]} />
         <Bar dataKey="fact" name="fact" fill="hsl(var(--primary))" radius={[3, 3, 0, 0]} />
       </BarChart>
-    </ResponsiveContainer>
+      </ResponsiveContainer>
+    </>
   );
 }

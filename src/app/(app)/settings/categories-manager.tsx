@@ -26,6 +26,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { ConfirmAction } from "@/components/confirm-action";
 import {
   createCategory,
   updateCategory,
@@ -186,34 +187,23 @@ function CategoryDialog({
 }
 
 function DeleteButton({ id, name }: { id: string; name: string }) {
-  const [state, formAction] = useActionState<ActionResult | null, FormData>(
-    deleteCategory,
-    null
-  );
-
-  React.useEffect(() => {
-    if (!state) return;
-    if (state.ok) toast.success(state.message ?? "Удалено");
-    else toast.error(state.error);
-  }, [state]);
-
   return (
-    <form
-      action={formAction}
-      onSubmit={(e) => {
-        if (!confirm(`Удалить категорию «${name}»?`)) e.preventDefault();
+    <ConfirmAction
+      title={`Удалить категорию «${name}»?`}
+      description="Действие необратимо. Категория, используемая сервисами, удалена не будет."
+      confirmLabel="Удалить"
+      destructive
+      variant="ghost"
+      size="icon"
+      aria-label="Удалить"
+      className="text-destructive hover:text-destructive"
+      onConfirm={async () => {
+        const fd = new FormData();
+        fd.set("id", id);
+        return deleteCategory(null, fd);
       }}
     >
-      <input type="hidden" name="id" value={id} />
-      <Button
-        type="submit"
-        variant="ghost"
-        size="icon"
-        aria-label="Удалить"
-        className="text-destructive hover:text-destructive"
-      >
-        <Trash2 className="size-4" />
-      </Button>
-    </form>
+      <Trash2 className="size-4" />
+    </ConfirmAction>
   );
 }

@@ -44,6 +44,10 @@ export type ServiceRow = {
   billingModel: BillingModel;
   billingCycle: BillingCycle;
   runRateMonthly: number;
+  /** Та же величина в базовой валюте (для сравнения и сортировки). */
+  runRateBase: number;
+  /** false — курса на дату нет, показана исходная сумма как есть. */
+  hasRate: boolean;
   currency: string;
   seatsCount: number;
   ownerId: string;
@@ -76,14 +80,18 @@ type SortKey = "name" | "runRateMonthly" | "seatsCount" | "nextPaymentDate";
 
 const PRESET_KEY = "subtrack.servicePresets";
 
+const PAGE_SIZE = 25;
+
 export function ServicesTable({
   rows,
   options,
   canEdit,
+  baseCurrency,
 }: {
   rows: ServiceRow[];
   options: ServiceOptions;
   canEdit: boolean;
+  baseCurrency: string;
 }) {
   const [filters, setFilters] = React.useState<Filters>(EMPTY);
   const [sort, setSort] = React.useState<{ key: SortKey; dir: 1 | -1 }>({
@@ -136,7 +144,8 @@ export function ServicesTable({
       let cmp = 0;
       if (key === "name") cmp = a.name.localeCompare(b.name, "ru");
       else if (key === "runRateMonthly")
-        cmp = a.runRateMonthly - b.runRateMonthly;
+        // Сортируем по базовой валюте — иначе сравниваются разные валюты.
+        cmp = a.runRateBase - b.runRateBase;
       else if (key === "seatsCount") cmp = a.seatsCount - b.seatsCount;
       else if (key === "nextPaymentDate")
         cmp = (a.nextPaymentDate ?? "").localeCompare(b.nextPaymentDate ?? "");
@@ -149,6 +158,17 @@ export function ServicesTable({
     setSort((s) =>
       s.key === key ? { key, dir: (s.dir * -1) as 1 | -1 } : { key, dir: 1 }
     );
+
+  // Пагинация (§7: списки с пагинацией на объёмах до 500 сервисов).
+  const [page, setPage] = React.useState(1);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  React.useEffect(() => {
+    setPage(1);
+  }, [filters, sort]);
+  const pageRows = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  // Итог по отфильтрованному — в базовой валюте.
+  const totalBase = filtered.reduce((acc, r) => acc + r.runRateBase, 0);
 
   const openCreate = () => {
     setEditing(null);
@@ -286,14 +306,14 @@ export function ServicesTable({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filtered.length === 0 ? (
+            {pageRows.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
                   Ничего не найдено.
                 </TableCell>
               </TableRow>
             ) : (
-              filtered.map((r) => (
+              pageRows.map((r) => (
                 <TableRow key={r.id}>
                   <TableCell>
                     <Link
@@ -318,8 +338,22 @@ export function ServicesTable({
                       {BILLING_CYCLE_LABEL[r.billingCycle]}
                     </span>
                   </TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {formatMoney(r.runRateMonthly, r.currency)}
+                  <TableCell
+                    className="text-right tabular-nums"
+                    title={
+                      r.currency === baseCurrency
+                        ? undefined
+                        : r.hasRate
+                          ? `${formatMoney(r.runRateMonthly, r.currency)} по текущему курсу`
+                          : `${formatMoney(r.runRateMonthly, r.currency)} — курса нет, показано как есть`
+                    }
+                  >
+                    {formatMoney(r.runRateBase, baseCurrency)}
+                    {r.currency !== baseCurrency && (
+                      <span className="ml-1 text-xs text-muted-foreground">
+                        {r.hasRate ? r.currency : `${r.currency}!`}
+                      </span>
+                    )}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
                     {r.billingModel === "fixed" ? "—" : r.seatsCount}
@@ -340,10 +374,37 @@ export function ServicesTable({
         </Table>
       </div>
 
-      <p className="text-xs text-muted-foreground">
-        Показано {filtered.length} из {rows.length}. Стоимость/мес —
-        нормализованная (yearly ÷ 12), в валюте сервиса.
-      </p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-xs text-muted-foreground">
+          Показано {pageRows.length} из {filtered.length} (всего {rows.length}).
+          Стоимость/мес — нормализованная (yearly ÷ 12) в базовой валюте{" "}
+          {baseCurrency}; исходная — в подсказке. Итого по фильтру:{" "}
+          <strong>{formatMoney(totalBase, baseCurrency)}</strong>/мес
+        </p>
+        {totalPages > 1 && (
+          <div className="flex items-center gap-2 text-sm">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              Назад
+            </Button>
+            <span className="text-muted-foreground">
+              {page} / {totalPages}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page >= totalPages}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            >
+              Вперёд
+            </Button>
+          </div>
+        )}
+      </div>
 
       {canEdit && (
         <ServiceDialog

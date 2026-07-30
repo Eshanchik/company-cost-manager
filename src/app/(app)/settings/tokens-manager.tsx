@@ -29,12 +29,12 @@ import {
 } from "@/components/ui/dialog";
 import { ROLE_LABEL } from "@/lib/roles";
 import { formatDate } from "@/lib/format";
+import { ConfirmAction } from "@/components/confirm-action";
 import {
   createApiToken,
   revokeApiToken,
   type CreateTokenResult,
 } from "@/lib/actions/tokens";
-import type { ActionResult } from "@/lib/actions/types";
 import type { Role } from "@prisma/client";
 
 export type TokenRow = {
@@ -215,35 +215,23 @@ function CreateTokenDialog({
 }
 
 function RevokeButton({ id, name }: { id: string; name: string }) {
-  const [state, formAction] = useActionState<ActionResult | null, FormData>(
-    revokeApiToken,
-    null
-  );
-
-  React.useEffect(() => {
-    if (!state) return;
-    if (state.ok) toast.success(state.message ?? "Отозван");
-    else toast.error(state.error);
-  }, [state]);
-
   return (
-    <form
-      action={formAction}
-      onSubmit={(e) => {
-        if (!confirm(`Отозвать токен «${name}»? Действие необратимо.`))
-          e.preventDefault();
+    <ConfirmAction
+      title={`Отозвать токен «${name}»?`}
+      description="Действие необратимо: интеграции с этим токеном перестанут работать."
+      confirmLabel="Отозвать"
+      destructive
+      variant="ghost"
+      size="icon"
+      aria-label="Отозвать"
+      className="text-destructive hover:text-destructive"
+      onConfirm={async () => {
+        const fd = new FormData();
+        fd.set("id", id);
+        return revokeApiToken(null, fd);
       }}
     >
-      <input type="hidden" name="id" value={id} />
-      <Button
-        type="submit"
-        variant="ghost"
-        size="icon"
-        aria-label="Отозвать"
-        className="text-destructive hover:text-destructive"
-      >
-        <Trash2 className="size-4" />
-      </Button>
-    </form>
+      <Trash2 className="size-4" />
+    </ConfirmAction>
   );
 }
