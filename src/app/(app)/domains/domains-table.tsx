@@ -56,6 +56,7 @@ export function DomainsTable({
   const [q, setQ] = React.useState("");
   const [registrar, setRegistrar] = React.useState("");
   const [expiring, setExpiring] = React.useState("");
+  const [priceFilter, setPriceFilter] = React.useState("");
   const [page, setPage] = React.useState(1);
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<ServiceDefaults | null>(null);
@@ -77,15 +78,18 @@ export function DomainsTable({
         return false;
       if (expiring === "expired" && !(r.daysLeft !== null && r.daysLeft < 0))
         return false;
+      if (priceFilter === "missing" && r.price > 0) return false;
+      if (priceFilter === "known" && r.price <= 0) return false;
       return true;
     });
-  }, [rows, q, registrar, expiring]);
+  }, [rows, q, registrar, expiring, priceFilter]);
 
-  React.useEffect(() => setPage(1), [q, registrar, expiring]);
+  React.useEffect(() => setPage(1), [q, registrar, expiring, priceFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const pageRows = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   const totalMonthly = filtered.reduce((a, r) => a + r.runRateBase, 0);
+  const missingPrice = filtered.filter((r) => r.price <= 0).length;
   const totalYearly = totalMonthly * 12;
 
   const openCreate = () => {
@@ -127,7 +131,16 @@ export function DomainsTable({
           <option value="90">Истекает ≤ 90 дней</option>
           <option value="expired">Просрочен</option>
         </NativeSelect>
-        {(q || registrar || expiring) && (
+        <NativeSelect
+          className="h-9 w-auto"
+          value={priceFilter}
+          onChange={(e) => setPriceFilter(e.target.value)}
+        >
+          <option value="">Цена: любая</option>
+          <option value="missing">Не указана</option>
+          <option value="known">Указана</option>
+        </NativeSelect>
+        {(q || registrar || expiring || priceFilter) && (
           <Button
             variant="ghost"
             size="sm"
@@ -135,6 +148,7 @@ export function DomainsTable({
               setQ("");
               setRegistrar("");
               setExpiring("");
+              setPriceFilter("");
             }}
           >
             <X className="size-4" /> Сбросить
@@ -187,7 +201,16 @@ export function DomainsTable({
                     {r.registrar ?? "—"}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
-                    {formatMoney(r.price, r.currency)}
+                    {r.price > 0 ? (
+                      formatMoney(r.price, r.currency)
+                    ) : (
+                      <Badge
+                        variant="secondary"
+                        title="В реестре цена не указана — стоимость не учитывается в расходах"
+                      >
+                        не указана
+                      </Badge>
+                    )}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
                     {formatMoney(r.runRateBase, baseCurrency)}
@@ -239,6 +262,14 @@ export function DomainsTable({
           Итого по фильтру:{" "}
           <strong>{formatMoney(totalMonthly, baseCurrency)}</strong>/мес ≈{" "}
           <strong>{formatMoney(totalYearly, baseCurrency)}</strong>/год
+          {missingPrice > 0 && (
+            <>
+              {" · "}
+              <span className="text-amber-600">
+                у {missingPrice} доменов цена не указана — расходы занижены
+              </span>
+            </>
+          )}
         </p>
         {totalPages > 1 && (
           <div className="flex items-center gap-2 text-sm">

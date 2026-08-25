@@ -53,5 +53,19 @@ export async function register() {
     );
   });
 
+  // Синхронизация доменов из DomainGuard — ежедневно 06:30 APP_TZ.
+  if (process.env.DOMAINGUARD_URL && process.env.DOMAINGUARD_TOKEN) {
+    new Cron("30 6 * * *", { timezone: tz, name: "domainguard-sync" }, async () => {
+      const { syncDomainGuard } = await import("@/lib/domainguard/sync");
+      const res = await syncDomainGuard({ actor: "cron:domainguard" });
+      console.log(
+        "[cron:domainguard-sync]",
+        res.ok
+          ? `создано ${res.created}, обновлено ${res.updated}, связано ${res.adopted}, без цены ${res.withoutPrice}`
+          : `ошибка: ${res.error}`
+      );
+    });
+  }
+
   console.log(`[instrumentation] cron-задачи запланированы (TZ=${tz})`);
 }
