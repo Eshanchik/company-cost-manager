@@ -12,6 +12,8 @@ export type PlanServiceInput = {
   billingCycle: BillingCycle;
   billingDay: number | null;
   renewalDate: Date | null;
+  /** «Оплачено вперёд до» — списания по эту дату включительно уже покрыты. */
+  prepaidUntil?: Date | null;
   price: Prisma.Decimal | number | string;
   currency: string;
   seats: { seatPrice: Prisma.Decimal | number | string }[];
@@ -56,8 +58,25 @@ export function expectedDateForMonth(
 }
 
 /**
+ * true, если списание на дату `date` уже покрыто предоплатой (§ отсрочка):
+ * сервис проплачен вперёд по `prepaidUntil` включительно.
+ */
+export function isPrepaidFor(
+  prepaidUntil: Date | null | undefined,
+  date: Date
+): boolean {
+  if (!prepaidUntil) return false;
+  return atUtcDay(prepaidUntil) >= atUtcDay(date);
+}
+
+function atUtcDay(d: Date): number {
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+}
+
+/**
  * Строка плана для сервиса в месяце (year, month0) или null, если сервис не
- * попадает в план (не active, либо нет списания в этом месяце).
+ * попадает в план (не active, нет списания в этом месяце, либо списание уже
+ * покрыто предоплатой).
  * Сумма строки = стоимость сервиса за цикл (§4.1) в его валюте; для yearly это
  * полный годовой платёж в месяц продления (кэш-флоу).
  */
@@ -70,6 +89,9 @@ export function buildPlanLine(
 
   const expectedDate = expectedDateForMonth(service, year, month0);
   if (!expectedDate) return null;
+
+  // Оплачено вперёд — денег в этом месяце сервис не просит (кэш-флоу).
+  if (isPrepaidFor(service.prepaidUntil, expectedDate)) return null;
 
   const expectedAmount = serviceCycleCost({
     billingModel: service.billingModel,

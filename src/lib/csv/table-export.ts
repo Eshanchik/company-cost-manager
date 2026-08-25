@@ -50,6 +50,7 @@ export async function exportServicesCsv(): Promise<string> {
     s.owner.name ?? s.owner.email ?? "",
     s.paymentMethod?.name ?? "",
     d(s.nextPaymentDate),
+    d(s.prepaidUntil),
     STATUS_LABEL[s.status],
   ]);
   return toCsv(
@@ -66,6 +67,7 @@ export async function exportServicesCsv(): Promise<string> {
       "Ответственный",
       "Способ оплаты",
       "След. оплата",
+      "Оплачено до",
       "Статус",
     ],
     rows

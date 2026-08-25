@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { serviceMonthlyRunRate } from "@/lib/calc/service-cost";
 import { convert, type RateRecord } from "@/lib/calc/fx";
+import { renewalsInWindow } from "@/lib/calc/renewals";
 import { forecastToEndOfMonth } from "@/lib/plan/forecast";
 import { getExpectedCharges, type ExpectedCharge } from "@/lib/plan/expected-charges";
 
@@ -193,29 +194,14 @@ export async function getDashboardMetrics(
   }
 
   // «Требует внимания»: годовые в окне решения (§4.4).
-  const asOfDay = Date.UTC(
-    asOf.getUTCFullYear(),
-    asOf.getUTCMonth(),
-    asOf.getUTCDate()
-  );
-  const renewals: RenewalWindow[] = services
-    .filter((s) => s.billingCycle === "yearly" && s.renewalDate)
-    .map((s) => {
-      const renewal = s.renewalDate!;
-      const windowStart =
-        renewal.getTime() - s.cancellationNoticeDays * 86400000;
-      const inWindow = windowStart <= asOfDay && asOfDay <= renewal.getTime();
-      const daysLeft = Math.ceil((renewal.getTime() - asOfDay) / 86400000);
-      return { service: s, renewal, inWindow, daysLeft };
+  const renewals: RenewalWindow[] = renewalsInWindow(services, asOf).map(
+    (r) => ({
+      serviceId: r.serviceId,
+      name: r.name,
+      renewalDate: r.renewalDate.toISOString(),
+      daysLeft: r.daysLeft,
     })
-    .filter((x) => x.inWindow)
-    .map((x) => ({
-      serviceId: x.service.id,
-      name: x.service.name,
-      renewalDate: x.renewal.toISOString(),
-      daysLeft: x.daysLeft,
-    }))
-    .sort((a, b) => a.daysLeft - b.daysLeft);
+  );
 
   return {
     base,

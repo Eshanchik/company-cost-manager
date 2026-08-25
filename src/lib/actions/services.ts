@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { requireManager, AuthorizationError } from "@/lib/authz";
 import { writeAudit, buildDiff } from "@/lib/audit";
 import { computeNextPaymentDate } from "@/lib/calc/dates";
+import { appMonthStart } from "@/lib/calc/app-time";
 import { SUPPORTED_CURRENCIES } from "@/lib/currencies";
 import { type ActionResult, ok, fail } from "@/lib/actions/types";
 
@@ -23,6 +24,7 @@ const AUDIT_FIELDS = [
   "currency",
   "billingDay",
   "renewalDate",
+  "prepaidUntil",
   "paymentMethodId",
   "ownerId",
   "backupOwnerId",
@@ -44,6 +46,7 @@ const schema = z
     currency: z.enum(SUPPORTED_CURRENCIES),
     billingDay: z.coerce.number().int().min(1).max(31).optional(),
     renewalDate: z.string().trim().optional().or(z.literal("")),
+    prepaidUntil: z.string().trim().optional().or(z.literal("")),
     paymentMethodId: z.string().trim().optional().or(z.literal("")),
     ownerId: z.string().trim().min(1, "Укажите ответственного"),
     backupOwnerId: z.string().trim().optional().or(z.literal("")),
@@ -91,8 +94,12 @@ function normalize(
     !isMonthly && v.renewalDate ? new Date(`${v.renewalDate}T00:00:00.000Z`) : null;
   const billingDay = isMonthly ? (v.billingDay ?? null) : null;
 
+  const prepaidUntil = v.prepaidUntil
+    ? new Date(`${v.prepaidUntil}T00:00:00.000Z`)
+    : null;
+
   const nextPaymentDate = computeNextPaymentDate(
-    { billingCycle: v.billingCycle, billingDay, renewalDate },
+    { billingCycle: v.billingCycle, billingDay, renewalDate, prepaidUntil },
     new Date()
   );
 
@@ -116,6 +123,7 @@ function normalize(
       currency: v.currency,
       billingDay,
       renewalDate,
+      prepaidUntil,
       nextPaymentDate,
       paymentMethodId: v.paymentMethodId || null,
       ownerId: v.ownerId,
@@ -141,6 +149,7 @@ function parseForm(formData: FormData) {
     currency: formData.get("currency"),
     billingDay: formData.get("billingDay") || undefined,
     renewalDate: formData.get("renewalDate") ?? "",
+    prepaidUntil: formData.get("prepaidUntil") ?? "",
     paymentMethodId: formData.get("paymentMethodId") ?? "",
     ownerId: formData.get("ownerId"),
     backupOwnerId: formData.get("backupOwnerId") ?? "",
@@ -149,6 +158,30 @@ function parseForm(formData: FormData) {
     tags: formData.get("tags") ?? "",
     notes: formData.get("notes") ?? "",
   });
+}
+
+
+/**
+ * Закрывает ожидаемые строки плана, попавшие в оплаченный вперёд период.
+ * Только с начала текущего месяца — историю прошлых месяцев не переписываем
+ * (§3.8), иначе честная просрочка задним числом превратилась бы в «waived».
+ */
+async function waivePrepaidExpectedLines(
+  serviceId: string,
+  prepaidUntil: Date
+): Promise<number> {
+  const res = await prisma.planLine.updateMany({
+    where: {
+      serviceId,
+      status: "expected",
+      expectedDate: { gte: appMonthStart(), lte: prepaidUntil },
+    },
+    data: {
+      status: "waived",
+      comment: `Оплачено вперёд до ${prepaidUntil.toISOString().slice(0, 10)}`,
+    },
+  });
+  return res.count;
 }
 
 export async function createService(
@@ -192,12 +225,26 @@ export async function updateService(
 
     const { data } = normalize(parsed.data);
     const updated = await prisma.service.update({ where: { id }, data });
+
+    // Если через форму выставили/продлили «оплачено вперёд» — закрываем
+    // ожидания в оплаченном периоде (иначе они уйдут в ложную просрочку).
+    let waivedCount = 0;
+    if (
+      updated.prepaidUntil &&
+      updated.prepaidUntil.getTime() !== (before.prepaidUntil?.getTime() ?? 0)
+    ) {
+      waivedCount = await waivePrepaidExpectedLines(id, updated.prepaidUntil);
+    }
+
     await writeAudit({
       entity: "Service",
       entityId: id,
       actor: actor.email ?? actor.id,
       action: "update",
-      diff: buildDiff(before, updated, [...AUDIT_FIELDS]),
+      diff: {
+        ...buildDiff(before, updated, [...AUDIT_FIELDS]),
+        ...(waivedCount > 0 ? { waived_plan_lines: waivedCount } : {}),
+      },
     });
     revalidatePath("/services");
     revalidatePath(`/services/${id}`);
@@ -243,4 +290,102 @@ function toError(e: unknown, verb: string): ActionResult {
   if (e instanceof AuthorizationError) return fail(e.message);
   console.error(`Не удалось ${verb}:`, e);
   return fail(`Не удалось ${verb}`);
+}
+
+/**
+ * «Отложить оплату»: сервис проплачен вперёд до указанной даты.
+ * Ставит `prepaidUntil`, пересчитывает следующую дату платежа и закрывает уже
+ * сгенерированные ожидаемые строки плана, попавшие в оплаченный период.
+ *
+ * План задним числом НЕ переписывается (§3.8): суммы и даты строк остаются,
+ * меняется только статус на `waived` с комментарием — это ровно тот случай,
+ * для которого waived и предназначен («списания не было — это нормально»).
+ */
+export async function setServicePrepaidUntil(
+  _prev: ActionResult | null,
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    const actor = await requireManager();
+    const id = String(formData.get("id") ?? "");
+    const raw = String(formData.get("prepaidUntil") ?? "").trim();
+    if (!id) return fail("Не указан сервис");
+
+    const before = await prisma.service.findUnique({ where: { id } });
+    if (!before) return fail("Сервис не найден");
+
+    if (!raw) {
+      // Снять отсрочку.
+      const updated = await prisma.service.update({
+        where: { id },
+        data: {
+          prepaidUntil: null,
+          nextPaymentDate: computeNextPaymentDate(
+            {
+              billingCycle: before.billingCycle,
+              billingDay: before.billingDay,
+              renewalDate: before.renewalDate,
+              prepaidUntil: null,
+            },
+            new Date()
+          ),
+        },
+      });
+      await writeAudit({
+        entity: "Service",
+        entityId: id,
+        actor: actor.email ?? actor.id,
+        action: "unset_prepaid",
+        diff: buildDiff(before, updated, ["prepaidUntil"]),
+      });
+      revalidatePath("/");
+      revalidatePath("/services");
+      revalidatePath(`/services/${id}`);
+      return ok("Отсрочка снята");
+    }
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return fail("Некорректная дата");
+    const prepaidUntil = new Date(`${raw}T00:00:00.000Z`);
+
+    const updated = await prisma.service.update({
+      where: { id },
+      data: {
+        prepaidUntil,
+        nextPaymentDate: computeNextPaymentDate(
+          {
+            billingCycle: before.billingCycle,
+            billingDay: before.billingDay,
+            renewalDate: before.renewalDate,
+            prepaidUntil,
+          },
+          new Date()
+        ),
+      },
+    });
+
+    const waivedCount = await waivePrepaidExpectedLines(id, prepaidUntil);
+
+    await writeAudit({
+      entity: "Service",
+      entityId: id,
+      actor: actor.email ?? actor.id,
+      action: "set_prepaid",
+      diff: {
+        ...buildDiff(before, updated, ["prepaidUntil", "nextPaymentDate"]),
+        waived_plan_lines: waivedCount,
+      },
+    });
+
+    revalidatePath("/");
+    revalidatePath("/services");
+    revalidatePath(`/services/${id}`);
+    revalidatePath("/reports");
+    return ok(
+      waivedCount > 0
+        ? `Оплачено вперёд до ${raw}; закрыто ожиданий: ${waivedCount}`
+        : `Оплачено вперёд до ${raw}`
+    );
+  } catch (e) {
+    return toError(e, "установить отсрочку оплаты");
+  }
 }

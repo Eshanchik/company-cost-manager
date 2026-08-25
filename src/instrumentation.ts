@@ -42,11 +42,11 @@ export async function register() {
   // План-снапшот — 1-го числа в 00:05 APP_TZ (создаёт снапшот нового месяца).
   new Cron("5 0 1 * *", { timezone: tz, name: "plan-snapshot" }, async () => {
     const { generateSnapshot } = await import("@/lib/plan/generate-snapshot");
-    const now = new Date();
-    const res = await generateSnapshot({
-      year: now.getUTCFullYear(),
-      month0: now.getUTCMonth(),
-    });
+    const { appCalendarParts } = await import("@/lib/calc/app-time");
+    // Месяц берём в APP_TZ: cron срабатывает 1-го в 00:05 местного времени,
+    // что по UTC — ещё последний день предыдущего месяца.
+    const { year, month0 } = appCalendarParts(new Date());
+    const res = await generateSnapshot({ year, month0 });
     console.log(
       "[cron:plan-snapshot]",
       res.created ? `создан ${res.month}: ${res.lines} строк` : `пропущен (${res.reason})`

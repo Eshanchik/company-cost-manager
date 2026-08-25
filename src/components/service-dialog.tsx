@@ -39,6 +39,7 @@ export type ServiceDefaults = {
   currency: string;
   billingDay: string;
   renewalDate: string; // YYYY-MM-DD
+  prepaidUntil: string; // YYYY-MM-DD, «оплачено вперёд до»
   paymentMethodId: string;
   ownerId: string;
   backupOwnerId: string;
@@ -267,6 +268,17 @@ export function ServiceDialog({
                 />
               </Field>
             )}
+            <Field label="Оплачено вперёд до">
+              <Input
+                name="prepaidUntil"
+                type="date"
+                defaultValue={service?.prepaidUntil ?? ""}
+              />
+              <p className="text-xs text-muted-foreground">
+                Списания по эту дату включительно не планируются — сервис уже
+                проплачен.
+              </p>
+            </Field>
             <Field label="Теги (через запятую)">
               <Input name="tags" defaultValue={service?.tags} placeholder="ai, design" />
             </Field>

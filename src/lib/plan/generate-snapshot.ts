@@ -75,6 +75,7 @@ export async function generateSnapshot(opts: {
     billingCycle: s.billingCycle,
     billingDay: s.billingDay,
     renewalDate: s.renewalDate,
+    prepaidUntil: s.prepaidUntil,
     price: s.price,
     currency: s.currency,
     seats: s.seats,

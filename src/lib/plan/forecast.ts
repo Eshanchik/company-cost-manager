@@ -73,6 +73,7 @@ export async function forecastToEndOfMonth(asOf: Date = new Date()): Promise<{
     billingCycle: s.billingCycle,
     billingDay: s.billingDay,
     renewalDate: s.renewalDate,
+    prepaidUntil: s.prepaidUntil,
     price: s.price,
     currency: s.currency,
     seats: s.seats,

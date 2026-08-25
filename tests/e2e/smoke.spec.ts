@@ -86,8 +86,12 @@ test("приёмочный сценарий: сервис → место → с�
   // 4. Пересобрать снапшот текущего месяца (Настройки → Планы)
   await page.goto("/settings");
   await page.getByRole("tab", { name: "Планы" }).click();
-  page.once("dialog", (d) => d.accept());
   await page.getByRole("button", { name: /Пересобрать снапшот/ }).click();
+  // Подтверждение — AlertDialog (с Блока 21 вместо нативного confirm).
+  await page
+    .getByRole("alertdialog")
+    .getByRole("button", { name: "Пересобрать" })
+    .click();
   await expect(page.getByText(/пересобран/)).toBeVisible();
 
   // 5. Подтвердить ожидаемое списание нового сервиса на дашборде
@@ -108,4 +112,74 @@ test("приёмочный сценарий: сервис → место → с�
     page.getByRole("heading", { name: /Отчёт «План \/ Факт»/ })
   ).toBeVisible();
   await expect(page.getByRole("link", { name: svcName })).toBeVisible();
+});
+
+test("массовое добавление мест, отсрочка оплаты и поиск по email", async ({
+  page,
+}) => {
+  await login(page);
+  const stamp = Date.now();
+  const svcName = `E2E Bulk ${stamp}`;
+  const day = new Date().getUTCDate();
+
+  // 1. Создать per_seat сервис
+  await page.goto("/services");
+  await page.getByRole("button", { name: "Добавить сервис" }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.locator('input[name="name"]').fill(svcName);
+  await dialog.locator('input[name="seatPriceDefault"]').fill("10");
+  await dialog.locator('input[name="billingDay"]').fill(String(day));
+  await dialog
+    .locator('select[name="ownerId"]')
+    .selectOption({ label: "Администратор" });
+  await dialog.getByRole("button", { name: "Создать" }).click();
+  await expect(page.getByText(/Сервис создан/)).toBeVisible();
+
+  // 2. Массово добавить троих
+  await page.getByRole("link", { name: svcName }).click();
+  await page.getByRole("tab", { name: /Места/ }).click();
+  await page.getByRole("button", { name: /Добавить несколько/ }).click();
+  const bulk = page.getByRole("dialog");
+  const emails = [
+    `bulk.a.${stamp}@company.com`,
+    `bulk.b.${stamp}@company.com`,
+    `bulk.c.${stamp}@company.com`,
+  ];
+  await bulk.locator('textarea[name="emails"]').fill(emails.join("\n"));
+  await expect(bulk.getByText(/Распознано адресов: 3/)).toBeVisible();
+  await bulk.getByRole("button", { name: /Добавить \(3\)/ }).click();
+  await expect(page.getByText(/Добавлено мест: 3/)).toBeVisible();
+  await expect(page.getByRole("tab", { name: /Места \(3\)/ })).toBeVisible();
+
+  // 3. Поиск по email: видно, какие сервисы на человеке
+  await page.goto("/employees");
+  await page.getByPlaceholder(/Поиск по email/).fill(emails[0]!);
+  const row = page.getByRole("row").filter({ hasText: emails[0]! });
+  await expect(row).toBeVisible();
+  await expect(row.getByText(svcName)).toBeVisible();
+
+  // 4. Отсрочка оплаты: пересобрать снапшот → отложить списание с дашборда
+  await page.goto("/settings");
+  await page.getByRole("tab", { name: "Планы" }).click();
+  await page.getByRole("button", { name: /Пересобрать снапшот/ }).click();
+  await page
+    .getByRole("alertdialog")
+    .getByRole("button", { name: "Пересобрать" })
+    .click();
+  await expect(page.getByText(/пересобран/)).toBeVisible();
+
+  await page.goto("/");
+  const feedRow = page
+    .locator("div.divide-y > div")
+    .filter({ hasText: svcName });
+  await expect(feedRow).toBeVisible();
+  await feedRow.getByRole("button", { name: "Оплачено вперёд" }).click();
+  await page.getByRole("button", { name: /Отложить списания/ }).click();
+  await expect(page.getByText(/Оплачено вперёд до/)).toBeVisible();
+
+  // Строка ушла из ленты ожиданий
+  await page.goto("/");
+  await expect(
+    page.locator("div.divide-y > div").filter({ hasText: svcName })
+  ).toHaveCount(0);
 });

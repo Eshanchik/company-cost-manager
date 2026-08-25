@@ -56,6 +56,7 @@ function toDefaults(s: {
   currency: string;
   billingDay: number | null;
   renewalDate: Date | null;
+  prepaidUntil: Date | null;
   paymentMethodId: string | null;
   ownerId: string;
   backupOwnerId: string | null;
@@ -78,6 +79,9 @@ function toDefaults(s: {
     billingDay: s.billingDay != null ? String(s.billingDay) : "",
     renewalDate: s.renewalDate
       ? s.renewalDate.toISOString().slice(0, 10)
+      : "",
+    prepaidUntil: s.prepaidUntil
+      ? s.prepaidUntil.toISOString().slice(0, 10)
       : "",
     paymentMethodId: s.paymentMethodId ?? "",
     ownerId: s.ownerId,
@@ -242,6 +246,13 @@ export default async function ServiceDetailPage({
               <Fact label="Следующая оплата">
                 {formatDate(service.nextPaymentDate)}
               </Fact>
+              {service.prepaidUntil && (
+                <Fact label="Оплачено вперёд">
+                  <Badge variant="secondary">
+                    до {formatDate(service.prepaidUntil)}
+                  </Badge>
+                </Fact>
+              )}
               {service.billingModel !== "per_seat" && (
                 <Fact label="Фикс. цена (за цикл)">
                   {formatMoney(service.price, service.currency)}
