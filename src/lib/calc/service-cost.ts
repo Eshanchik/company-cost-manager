@@ -41,10 +41,19 @@ export function serviceCycleCost(input: ServiceCostInput): Dec {
 
 /**
  * Нормализация к месячной стоимости (run-rate, §4.1):
- * monthly → как есть; yearly → сумма / 12.
+ * monthly → как есть; quarterly → сумма / 3; yearly → сумма / 12.
  */
 export function normalizeToMonthly(amount: Dec, cycle: BillingCycle): Dec {
-  return cycle === "yearly" ? amount.div(12) : amount;
+  if (cycle === "yearly") return amount.div(12);
+  if (cycle === "quarterly") return amount.div(3);
+  return amount;
+}
+
+/** Сколько месяцев в одном биллинговом цикле. */
+export function cycleMonths(cycle: BillingCycle): number {
+  if (cycle === "yearly") return 12;
+  if (cycle === "quarterly") return 3;
+  return 1;
 }
 
 /** Нормализованная месячная стоимость сервиса (run-rate). */

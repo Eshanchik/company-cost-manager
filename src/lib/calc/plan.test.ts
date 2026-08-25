@@ -183,3 +183,46 @@ describe("isPrepaidFor", () => {
     expect(isPrepaidFor(d("2026-03-09"), d("2026-03-10"))).toBe(false);
   });
 });
+
+describe("quarterly — квартальная оплата", () => {
+  // Опорная дата (renewalDate) задаёт фазу и день квартального списания.
+  const q: PlanServiceInput = {
+    ...base,
+    billingModel: "fixed",
+    billingCycle: "quarterly",
+    billingDay: null,
+    renewalDate: d("2026-02-10"),
+    price: 300,
+    seats: [],
+  };
+
+  it("списание в месяце фазы (февраль)", () => {
+    expect(iso(buildPlanLine(q, 2026, 1)!.expectedDate)).toBe("2026-02-10");
+  });
+
+  it("следующий квартал — май", () => {
+    expect(iso(buildPlanLine(q, 2026, 4)!.expectedDate)).toBe("2026-05-10");
+  });
+
+  it("месяцы вне фазы пропускаются (март, апрель)", () => {
+    expect(buildPlanLine(q, 2026, 2)).toBeNull();
+    expect(buildPlanLine(q, 2026, 3)).toBeNull();
+  });
+
+  it("фаза сохраняется через год (февраль следующего года)", () => {
+    expect(iso(buildPlanLine(q, 2027, 1)!.expectedDate)).toBe("2027-02-10");
+  });
+
+  it("месяцы до опорной даты тоже в фазе (ноябрь 2025)", () => {
+    expect(iso(buildPlanLine(q, 2025, 10)!.expectedDate)).toBe("2025-11-10");
+  });
+
+  it("сумма строки = стоимость цикла (квартальная), не делится", () => {
+    expect(buildPlanLine(q, 2026, 1)!.expectedAmount.toString()).toBe("300");
+  });
+
+  it("день 31 в коротком месяце схлопывается (31.01 → 30.04)", () => {
+    const svc = { ...q, renewalDate: d("2026-01-31") };
+    expect(iso(buildPlanLine(svc, 2026, 3)!.expectedDate)).toBe("2026-04-30");
+  });
+});

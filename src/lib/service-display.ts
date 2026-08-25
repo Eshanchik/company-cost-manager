@@ -25,5 +25,11 @@ export const BILLING_MODEL_LABEL: Record<BillingModel, string> = {
 
 export const BILLING_CYCLE_LABEL: Record<BillingCycle, string> = {
   monthly: "Ежемесячно",
+  quarterly: "Ежеквартально",
   yearly: "Ежегодно",
+};
+
+export const SERVICE_KIND_LABEL: Record<"service" | "domain", string> = {
+  service: "Сервис",
+  domain: "Домен",
 };

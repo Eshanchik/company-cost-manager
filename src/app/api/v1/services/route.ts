@@ -9,6 +9,7 @@ export async function GET(req: Request) {
       category: url.searchParams.get("category") ?? undefined,
       owner: url.searchParams.get("owner") ?? undefined,
       q: url.searchParams.get("q") ?? undefined,
+      kind: url.searchParams.get("kind") ?? undefined,
     })
   );
 }

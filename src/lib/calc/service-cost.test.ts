@@ -86,3 +86,31 @@ describe("serviceMonthlyRunRate", () => {
     ).toBe("100");
   });
 });
+
+describe("quarterly в run-rate", () => {
+  it("quarterly $300 → $100/мес нормализованно", () => {
+    expect(normalizeToMonthly(D(300), "quarterly").toString()).toBe("100");
+  });
+
+  it("serviceMonthlyRunRate для quarterly делит на 3", () => {
+    expect(
+      serviceMonthlyRunRate({
+        billingModel: "fixed",
+        billingCycle: "quarterly",
+        price: 300,
+        seats: [],
+      }).toString()
+    ).toBe("100");
+  });
+
+  it("per_seat quarterly: 3 места по 30 за квартал → 30/мес", () => {
+    expect(
+      serviceMonthlyRunRate({
+        billingModel: "per_seat",
+        billingCycle: "quarterly",
+        price: 0,
+        seats: seats(30, 30, 30),
+      }).toString()
+    ).toBe("30");
+  });
+});

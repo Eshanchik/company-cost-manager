@@ -37,6 +37,7 @@ export type PlanLineDraft = {
  * Дата ожидаемого списания сервиса в месяце (year, month0), либо null, если в
  * этом месяце списания нет (§4.2):
  * - monthly: `billingDay`, но не больше числа дней месяца (31 в феврале → 28/29);
+ * - quarterly: раз в 3 месяца в фазе `renewalDate` (опорная дата), в её день;
  * - yearly: только в месяц `renewalDate`, в день продления.
  */
 export function expectedDateForMonth(
@@ -51,8 +52,21 @@ export function expectedDateForMonth(
     if (service.billingDay == null) return null;
     return clampToMonth(year, month0, service.billingDay);
   }
-  // yearly
+
   if (!service.renewalDate) return null;
+
+  if (service.billingCycle === "quarterly") {
+    // Списание раз в 3 месяца в фазе опорной даты.
+    const anchorM =
+      service.renewalDate.getUTCFullYear() * 12 +
+      service.renewalDate.getUTCMonth();
+    const targetM = year * 12 + month0;
+    const diff = targetM - anchorM;
+    if (diff % 3 !== 0) return null;
+    return clampToMonth(year, month0, service.renewalDate.getUTCDate());
+  }
+
+  // yearly
   if (service.renewalDate.getUTCMonth() !== month0) return null;
   return clampToMonth(year, month0, service.renewalDate.getUTCDate());
 }

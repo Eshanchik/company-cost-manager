@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { serviceMonthlyRunRate } from "@/lib/calc/service-cost";
 import { convert, type RateRecord } from "@/lib/calc/fx";
 import { renewalsInWindow } from "@/lib/calc/renewals";
+import { isPrepaidFor } from "@/lib/calc/plan";
 import { forecastToEndOfMonth } from "@/lib/plan/forecast";
 import { getExpectedCharges, type ExpectedCharge } from "@/lib/plan/expected-charges";
 
@@ -14,6 +15,15 @@ export type RenewalWindow = {
   name: string;
   renewalDate: string;
   daysLeft: number;
+};
+
+export type ExpiringDomain = {
+  serviceId: string;
+  name: string;
+  registrar: string | null;
+  renewalDate: string;
+  daysLeft: number;
+  autoRenew: boolean;
 };
 
 export type MonthPoint = {
@@ -38,6 +48,8 @@ export type DashboardMetrics = {
   forecastMonthTotal: number;
   overdue: ExpectedCharge[];
   renewals: RenewalWindow[];
+  expiringDomains: ExpiringDomain[];
+  domainsCount: number;
   planFact12: MonthPoint[];
   byCategory: CategorySlice[];
   top5: TopService[];
@@ -194,7 +206,10 @@ export async function getDashboardMetrics(
   }
 
   // «Требует внимания»: годовые в окне решения (§4.4).
-  const renewals: RenewalWindow[] = renewalsInWindow(services, asOf).map(
+  const renewals: RenewalWindow[] = renewalsInWindow(
+    services.filter((s) => s.kind !== "domain"),
+    asOf
+  ).map(
     (r) => ({
       serviceId: r.serviceId,
       name: r.name,
@@ -203,8 +218,32 @@ export async function getDashboardMetrics(
     })
   );
 
+  // Домены, истекающие в ближайшие 45 дней (без авто-продления — критично).
+  const asOfDay = Date.UTC(
+    asOf.getUTCFullYear(),
+    asOf.getUTCMonth(),
+    asOf.getUTCDate()
+  );
+  const domainServices = services.filter((s) => s.kind === "domain");
+  const expiringDomains: ExpiringDomain[] = domainServices
+    .filter((s) => s.renewalDate)
+    .map((s) => ({
+      serviceId: s.id,
+      name: s.name,
+      registrar: s.registrar,
+      renewalDate: s.renewalDate!.toISOString(),
+      daysLeft: Math.ceil((s.renewalDate!.getTime() - asOfDay) / 86400000),
+      autoRenew: s.autoRenew,
+      prepaidUntil: s.prepaidUntil,
+    }))
+    .filter((d) => d.daysLeft <= 45 && !isPrepaidFor(d.prepaidUntil, new Date(d.renewalDate)))
+    .map(({ prepaidUntil: _p, ...rest }) => rest)
+    .sort((a, b) => a.daysLeft - b.daysLeft);
+
   return {
     base,
+    expiringDomains,
+    domainsCount: domainServices.length,
     runRateMonthly: runRate.toNumber(),
     activeServices: services.length,
     activeSeats,

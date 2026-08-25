@@ -9,6 +9,7 @@ import {
   FileBarChart,
   Settings,
   ScrollText,
+  Globe,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -26,6 +27,7 @@ type NavItem = {
 const NAV_ITEMS: NavItem[] = [
   { href: "/", label: "Дашборд", icon: LayoutDashboard, exact: true },
   { href: "/services", label: "Сервисы", icon: Boxes },
+  { href: "/domains", label: "Домены", icon: Globe },
   { href: "/employees", label: "Сотрудники", icon: Users },
   { href: "/reports", label: "Отчёты", icon: FileBarChart },
   { href: "/audit", label: "Аудит", icon: ScrollText, adminOnly: true },
