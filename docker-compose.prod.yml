@@ -72,6 +72,11 @@ services:
       ADMIN_EMAILS: "${ADMIN_EMAILS:-}"
       APP_TZ: "${APP_TZ:-Europe/Kyiv}"
       BASE_CURRENCY: "${BASE_CURRENCY:-USD}"
+      # Реестр доменов DomainGuard (синхронизация); пусто — интеграция выключена.
+      DOMAINGUARD_URL: "${DOMAINGUARD_URL:-}"
+      DOMAINGUARD_TOKEN: "${DOMAINGUARD_TOKEN:-}"
+      DOMAINGUARD_PROJECT_IDS: "${DOMAINGUARD_PROJECT_IDS:-}"
+      DOMAINGUARD_OWNER_EMAIL: "${DOMAINGUARD_OWNER_EMAIL:-}"
       # Прод: демо-данные НЕ засеваются (админы whitelist'а — из ADMIN_EMAILS).
       SEED_ON_START: "false"
       NODE_ENV: "production"
