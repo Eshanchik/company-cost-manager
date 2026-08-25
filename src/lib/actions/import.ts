@@ -16,6 +16,8 @@ export type ImportResult =
   | {
       ok: true;
       created: number;
+      /** Обновлено существующих записей (дозаполнение полей). */
+      updated?: number;
       skippedDuplicates: number;
       errors: string[];
     }
@@ -396,9 +398,11 @@ export async function importPaymentsCsv(
 // ── Импорт доменов ───────────────────────────────────────────────────────────
 
 /**
- * Импорт доменов из CSV: name/domain, registrar, renewal_date (истечение),
- * price (за год), currency, owner_email, auto_renew.
- * Дедупликация по имени домена. Домен = Service{kind:"domain", fixed, yearly}.
+ * Импорт/дозаполнение доменов из CSV (например, выгрузка реестра DomainGuard).
+ *
+ * Домены, которых нет, создаются. Существующие (по имени) НЕ пропускаются, а
+ * дозаполняются: регистратор, цена, авто-продление, дата продления — то, что
+ * есть в файле. Это нужно потому, что API реестра регистратора не отдаёт.
  */
 export async function importDomainsCsv(
   _prev: ImportResult | null,
@@ -414,65 +418,116 @@ export async function importDomainsCsv(
       prisma.user.findMany({ select: { id: true, email: true } }),
       prisma.service.findMany({
         where: { kind: "domain" },
-        select: { name: true },
+        select: { id: true, name: true, price: true },
       }),
     ]);
     const userByEmail = new Map(
       users.filter((u) => u.email).map((u) => [u.email!.toLowerCase(), u.id])
     );
     const fallbackOwner = users[0]?.id;
+    const byName = new Map(existing.map((e) => [e.name.toLowerCase(), e]));
 
+    // Дубли внутри файла схлопываем, но существующие в БД — обрабатываем.
     const { unique, duplicates } = partitionUnique(
       records,
-      (r) => pick(r, "name", "domain", "домен"),
-      existing.map((e) => e.name)
+      (r) => pick(r, "name", "domain", "домен", "fqdn")
     );
 
     const errors: string[] = [];
     let created = 0;
+    let updated = 0;
 
     for (const rec of unique) {
-      const name = pick(rec, "name", "domain", "домен").toLowerCase();
+      const name = pick(rec, "name", "domain", "домен", "fqdn").toLowerCase();
       if (!name) {
         errors.push("Пустое имя домена");
         continue;
       }
-      const ownerEmail = pick(rec, "owner_email", "ownerEmail", "ответственный")
-        .toLowerCase();
-      const ownerId = userByEmail.get(ownerEmail) ?? fallbackOwner;
-      if (!ownerId) {
-        errors.push(`«${name}»: не найден ответственный`);
-        continue;
-      }
+
+      const registrar =
+        pick(rec, "registrar", "регистратор", "registrar_account", "account") ||
+        null;
       const renewalStr = pick(
         rec,
         "renewal_date",
         "expiry",
         "expires_at",
+        "expiry_date",
         "дата_продления",
         "истекает"
       );
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(renewalStr)) {
-        errors.push(`«${name}»: некорректная дата продления (${renewalStr || "—"})`);
-        continue;
-      }
-      const renewalDate = new Date(`${renewalStr}T00:00:00.000Z`);
-      const price = Number(pick(rec, "price", "цена") || "0");
-      const currency = pick(rec, "currency", "валюта") || "USD";
+      const renewalDate = /^\d{4}-\d{2}-\d{2}/.test(renewalStr)
+        ? new Date(`${renewalStr.slice(0, 10)}T00:00:00.000Z`)
+        : null;
+      const priceStr = pick(rec, "price", "renewal_price", "цена");
+      const price =
+        priceStr !== "" && Number.isFinite(Number(priceStr))
+          ? new Prisma.Decimal(Number(priceStr))
+          : null;
+      const currency = pick(rec, "currency", "renewal_currency", "валюта") || null;
       const autoRenewRaw = pick(rec, "auto_renew", "autoRenew", "автопродление");
-      const autoRenew = autoRenewRaw === "" ? true : /^(1|true|yes|да|вкл)$/i.test(autoRenewRaw);
+      const autoRenew =
+        autoRenewRaw === ""
+          ? null
+          : /^(1|true|yes|да|вкл|on)$/i.test(autoRenewRaw);
+
+      const found = byName.get(name);
 
       try {
+        if (found) {
+          // Дозаполнение: пишем только то, что реально пришло в файле.
+          const data: Prisma.ServiceUpdateInput = {};
+          if (registrar) data.registrar = registrar;
+          if (price !== null) data.price = price;
+          if (currency) data.currency = currency;
+          if (autoRenew !== null) data.autoRenew = autoRenew;
+          if (renewalDate) {
+            data.renewalDate = renewalDate;
+            data.nextPaymentDate = computeNextPaymentDate(
+              { billingCycle: "yearly", billingDay: null, renewalDate },
+              new Date()
+            );
+          }
+          if (Object.keys(data).length === 0) continue;
+
+          await prisma.service.update({ where: { id: found.id }, data });
+          updated++;
+          await writeAudit({
+            entity: "Service",
+            entityId: found.id,
+            actor: actor.email ?? actor.id,
+            action: "enrich",
+            diff: {
+              source: "csv",
+              fields: Object.keys(data).join(","),
+              registrar: registrar ?? null,
+            },
+          });
+          continue;
+        }
+
+        const ownerEmail = pick(rec, "owner_email", "ownerEmail", "ответственный")
+          .toLowerCase();
+        const ownerId = userByEmail.get(ownerEmail) ?? fallbackOwner;
+        if (!ownerId) {
+          errors.push(`«${name}»: не найден ответственный`);
+          continue;
+        }
+        if (!renewalDate) {
+          errors.push(`«${name}»: некорректная дата продления`);
+          continue;
+        }
+
         const svc = await prisma.service.create({
           data: {
             kind: "domain",
             name,
-            registrar: pick(rec, "registrar", "регистратор") || null,
-            autoRenew,
+            registrar,
+            autoRenew: autoRenew ?? true,
             billingModel: "fixed",
             billingCycle: "yearly",
-            price: new Prisma.Decimal(price),
-            currency,
+            price: price ?? new Prisma.Decimal(0),
+            currency: currency ?? "USD",
             renewalDate,
             nextPaymentDate: computeNextPaymentDate(
               { billingCycle: "yearly", billingDay: null, renewalDate },
@@ -491,13 +546,19 @@ export async function importDomainsCsv(
         });
       } catch (e) {
         console.error("import domain:", e);
-        errors.push(`«${name}»: ошибка вставки`);
+        errors.push(`«${name}»: ошибка записи`);
       }
     }
 
     revalidatePath("/domains");
     revalidatePath("/");
-    return { ok: true, created, skippedDuplicates: duplicates.length, errors };
+    return {
+      ok: true,
+      created,
+      updated,
+      skippedDuplicates: duplicates.length,
+      errors,
+    };
   } catch (e) {
     if (e instanceof AuthorizationError) return { ok: false, error: e.message };
     console.error("importDomainsCsv:", e);

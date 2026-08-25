@@ -207,7 +207,9 @@ test("домены: отдельный экран, годовая оплата, 
   await dlg.getByRole("button", { name: "Создать" }).click();
   await expect(page.getByText(/Сервис создан/)).toBeVisible();
 
-  // Домен в списке доменов, стоимость амортизирована на месяц (120/12 = 10)
+  // Домен в списке доменов, стоимость амортизирована на месяц (120/12 = 10).
+  // Ищем через поиск: список пагинирован, строка может быть не на первой странице.
+  await page.getByPlaceholder(/Поиск по домену/).fill(domain);
   const row = page.getByRole("row").filter({ hasText: domain });
   await expect(row).toBeVisible();
   await expect(row.getByText("Cloudflare")).toBeVisible();
@@ -239,7 +241,9 @@ test("квартальный цикл доступен в форме серви�
   await dlg.getByRole("button", { name: "Создать" }).click();
   await expect(page.getByText(/Сервис создан/)).toBeVisible();
 
-  // Нормализованная стоимость = 300 / 3 = 100
+  // Нормализованная стоимость = 300 / 3 = 100.
+  // Через поиск — таблица сервисов пагинирована (25/стр).
+  await page.getByPlaceholder(/Поиск по названию/).fill(svcName);
   const row = page.getByRole("row").filter({ hasText: svcName });
   await expect(row).toBeVisible();
   await expect(row.getByText(/100,00|100\.00/)).toBeVisible();
