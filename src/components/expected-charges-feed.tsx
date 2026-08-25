@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useActionState } from "react";
-import { Check, Ban } from "lucide-react";
+import { Check, Ban, CalendarClock } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,7 @@ import {
   confirmExpectedPayment,
   waivePlanLine,
 } from "@/lib/actions/payments";
+import { setServicePrepaidUntil } from "@/lib/actions/services";
 import type { ExpectedCharge } from "@/lib/plan/expected-charges";
 import type { ActionResult } from "@/lib/actions/types";
 
@@ -38,6 +39,7 @@ export function ExpectedChargesFeed({
 }) {
   const [confirming, setConfirming] = React.useState<ExpectedCharge | null>(null);
   const [waiving, setWaiving] = React.useState<ExpectedCharge | null>(null);
+  const [deferring, setDeferring] = React.useState<ExpectedCharge | null>(null);
 
   if (charges.length === 0) {
     return (
@@ -83,6 +85,15 @@ export function ExpectedChargesFeed({
               <Button
                 variant="ghost"
                 size="icon"
+                onClick={() => setDeferring(c)}
+                aria-label="Оплачено вперёд"
+                title="Оплачено вперёд — отложить списания до даты"
+              >
+                <CalendarClock className="size-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
                 onClick={() => setWaiving(c)}
                 aria-label="Списания не было"
                 title="Списания не было (waived)"
@@ -106,6 +117,13 @@ export function ExpectedChargesFeed({
           key={waiving.id}
           charge={waiving}
           onClose={() => setWaiving(null)}
+        />
+      )}
+      {deferring && (
+        <DeferDialog
+          key={`defer-${deferring.id}`}
+          charge={deferring}
+          onClose={() => setDeferring(null)}
         />
       )}
     </div>
@@ -220,6 +238,72 @@ function WaiveDialog({
           </div>
           <DialogFooter>
             <SubmitButton variant="secondary">Пометить waived</SubmitButton>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+
+function DeferDialog({
+  charge,
+  onClose,
+}: {
+  charge: ExpectedCharge;
+  onClose: () => void;
+}) {
+  const [state, formAction] = useActionState<ActionResult | null, FormData>(
+    setServicePrepaidUntil,
+    null
+  );
+
+  React.useEffect(() => {
+    if (!state) return;
+    if (state.ok) {
+      toast.success(state.message ?? "Готово");
+      onClose();
+    } else toast.error(state.error);
+  }, [state, onClose]);
+
+  // По умолчанию — год вперёд от ожидаемой даты (типичный кейс годовой предоплаты).
+  const defaultUntil = React.useMemo(() => {
+    const d = new Date(charge.expectedDate);
+    d.setUTCFullYear(d.getUTCFullYear() + 1);
+    d.setUTCDate(d.getUTCDate() - 1);
+    return d.toISOString().slice(0, 10);
+  }, [charge.expectedDate]);
+
+  return (
+    <Dialog open onOpenChange={(v) => !v && onClose()}>
+      <DialogContent>
+        <form action={formAction} className="space-y-4">
+          <DialogHeader>
+            <DialogTitle>Оплачено вперёд — {charge.serviceName}</DialogTitle>
+            <DialogDescription>
+              Сервис уже проплачен: списания по указанную дату включительно
+              планироваться не будут. Ожидания текущего и будущих месяцев в
+              этом периоде закроются автоматически; история прошлых месяцев не
+              меняется.
+            </DialogDescription>
+          </DialogHeader>
+          <input type="hidden" name="id" value={charge.serviceId} />
+          <div className="space-y-2">
+            <Label htmlFor="df-until">Оплачено до</Label>
+            <Input
+              id="df-until"
+              name="prepaidUntil"
+              type="date"
+              defaultValue={defaultUntil}
+              required
+            />
+            <p className="text-xs text-muted-foreground">
+              По умолчанию — год вперёд. Стоимость сервиса продолжит учитываться
+              в run-rate: меняется только график списаний.
+            </p>
+          </div>
+          <DialogFooter>
+            <SubmitButton>Отложить списания</SubmitButton>
           </DialogFooter>
         </form>
       </DialogContent>

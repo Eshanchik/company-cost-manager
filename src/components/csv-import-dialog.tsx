@@ -28,7 +28,7 @@ type ImportKind = "services" | "seats" | "payments";
 
 const HINTS: Record<ImportKind, string> = {
   services:
-    "Заголовки: name, billing_model (fixed|per_seat|hybrid), billing_cycle (monthly|yearly), currency, price, seat_price, billing_day, renewal_date, owner_email, category",
+    "Заголовки: name, billing_model (fixed|per_seat|hybrid), billing_cycle (monthly|yearly), currency, price, seat_price, billing_day, renewal_date, prepaid_until, owner_email, category",
   seats: "Заголовки: service, email, seat_price, full_name",
   payments:
     "Заголовки: service, paid_at (YYYY-MM-DD), amount, currency, comment, invoice_url",

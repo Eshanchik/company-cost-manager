@@ -3,6 +3,7 @@ import {
   expectedDateForMonth,
   buildPlanLine,
   buildMonthlyPlan,
+  isPrepaidFor,
   type PlanServiceInput,
 } from "@/lib/calc/plan";
 
@@ -110,5 +111,75 @@ describe("buildMonthlyPlan", () => {
     ];
     const plan = buildMonthlyPlan(services, 2026, 2); // март
     expect(plan.map((l) => l.serviceId)).toEqual(["s1"]);
+  });
+});
+
+describe("prepaidUntil — отсрочка оплаты (сервис проплачен вперёд)", () => {
+  const monthly: PlanServiceInput = {
+    ...base,
+    billingDay: 10,
+  };
+
+  it("списание внутри оплаченного периода не попадает в план", () => {
+    // оплачено до 31.12.2026, списание 10.03.2026 → покрыто
+    const svc = { ...monthly, prepaidUntil: d("2026-12-31") };
+    expect(buildPlanLine(svc, 2026, 2)).toBeNull();
+  });
+
+  it("списание после оплаченного периода попадает в план", () => {
+    // оплачено до 28.02.2026, списание 10.03.2026 → не покрыто
+    const svc = { ...monthly, prepaidUntil: d("2026-02-28") };
+    const line = buildPlanLine(svc, 2026, 2)!;
+    expect(iso(line.expectedDate)).toBe("2026-03-10");
+  });
+
+  it("граница: prepaidUntil ровно в день списания → покрыто (включительно)", () => {
+    const svc = { ...monthly, prepaidUntil: d("2026-03-10") };
+    expect(buildPlanLine(svc, 2026, 2)).toBeNull();
+  });
+
+  it("граница: prepaidUntil за день до списания → не покрыто", () => {
+    const svc = { ...monthly, prepaidUntil: d("2026-03-09") };
+    expect(buildPlanLine(svc, 2026, 2)).not.toBeNull();
+  });
+
+  it("prepaidUntil = null не влияет на план", () => {
+    expect(buildPlanLine({ ...monthly, prepaidUntil: null }, 2026, 2)).not.toBeNull();
+  });
+
+  it("yearly: продление внутри оплаченного периода не планируется", () => {
+    const yearly: PlanServiceInput = {
+      ...base,
+      billingModel: "fixed",
+      billingCycle: "yearly",
+      billingDay: null,
+      renewalDate: d("2025-09-15"),
+      price: 1200,
+      seats: [],
+      prepaidUntil: d("2026-10-01"),
+    };
+    expect(buildPlanLine(yearly, 2026, 8)).toBeNull();
+  });
+
+  it("buildMonthlyPlan исключает предоплаченные сервисы", () => {
+    const services: PlanServiceInput[] = [
+      { ...monthly, id: "paid", prepaidUntil: d("2026-12-31") },
+      { ...monthly, id: "normal" },
+    ];
+    expect(buildMonthlyPlan(services, 2026, 2).map((l) => l.serviceId)).toEqual([
+      "normal",
+    ]);
+  });
+});
+
+describe("isPrepaidFor", () => {
+  it("null/undefined → false", () => {
+    expect(isPrepaidFor(null, d("2026-03-10"))).toBe(false);
+    expect(isPrepaidFor(undefined, d("2026-03-10"))).toBe(false);
+  });
+  it("сравнение по календарному дню в UTC", () => {
+    expect(isPrepaidFor(d("2026-03-10"), d("2026-03-10"))).toBe(true);
+    expect(isPrepaidFor(d("2026-03-11"), d("2026-03-10"))).toBe(true);
+    expect(isPrepaidFor(d("2026-03-09"), d("2026-03-10"))).toBe(false);
   });
 });

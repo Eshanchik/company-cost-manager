@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { Prisma } from "@prisma/client";
 import { Download } from "lucide-react";
 
@@ -6,16 +5,8 @@ import { prisma } from "@/lib/prisma";
 import { normalizeToMonthly } from "@/lib/calc/service-cost";
 import { convert, type RateRecord } from "@/lib/calc/fx";
 import { formatMoney } from "@/lib/format";
+import { EmployeesTable } from "./employees-table";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 
 export default async function EmployeesPage() {
   const [employees, settings, ratesRaw] = await Promise.all([
@@ -24,7 +15,15 @@ export default async function EmployeesPage() {
         seats: {
           where: { endedAt: null },
           include: {
-            service: { select: { billingCycle: true, currency: true } },
+            service: {
+              select: {
+                id: true,
+                name: true,
+                vendorUrl: true,
+                billingCycle: true,
+                currency: true,
+              },
+            },
           },
         },
       },
@@ -65,6 +64,12 @@ export default async function EmployeesPage() {
         convert(monthly, cur, baseCurrency, now, rates) ?? monthly
       );
     }
+    const costs = [...byCurrency.entries()].map(([currency, amount]) => ({
+      currency,
+      amount: amount.toNumber(),
+    }));
+    const mixed =
+      costs.length > 1 || (costs[0] && costs[0].currency !== baseCurrency);
     return {
       id: e.id,
       fullName: e.fullName,
@@ -73,9 +78,13 @@ export default async function EmployeesPage() {
       status: e.status,
       seatsCount: e.seats.length,
       totalBase: totalBase.toNumber(),
-      costs: [...byCurrency.entries()].map(([currency, amount]) => ({
-        currency,
-        amount: amount.toNumber(),
+      costsLabel: mixed
+        ? costs.map((c) => formatMoney(c.amount, c.currency)).join(" + ")
+        : null,
+      services: e.seats.map((seat) => ({
+        id: seat.service.id,
+        name: seat.service.name,
+        vendorUrl: seat.service.vendorUrl,
       })),
     };
   });
@@ -98,77 +107,7 @@ export default async function EmployeesPage() {
         </Button>
       </div>
 
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Сотрудник</TableHead>
-              <TableHead>Отдел</TableHead>
-              <TableHead className="text-right">Активных мест</TableHead>
-              <TableHead className="text-right">Стоимость/мес</TableHead>
-              <TableHead>Статус</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.length === 0 ? (
-              <TableRow>
-                <TableCell
-                  colSpan={5}
-                  className="h-24 text-center text-muted-foreground"
-                >
-                  Сотрудников пока нет.
-                </TableCell>
-              </TableRow>
-            ) : (
-              rows.map((r) => (
-                <TableRow key={r.id}>
-                  <TableCell>
-                    <Link
-                      href={`/employees/${r.id}`}
-                      className="font-medium hover:underline"
-                    >
-                      {r.fullName}
-                    </Link>
-                    <div className="text-xs text-muted-foreground">
-                      {r.email}
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-sm">
-                    {r.department ?? "—"}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {r.seatsCount}
-                  </TableCell>
-                  <TableCell
-                    className="text-right tabular-nums"
-                    title={
-                      r.costs.length > 1 ||
-                      (r.costs[0] && r.costs[0].currency !== baseCurrency)
-                        ? r.costs
-                            .map((c) => formatMoney(c.amount, c.currency))
-                            .join(" + ")
-                        : undefined
-                    }
-                  >
-                    {r.costs.length === 0 ? (
-                      <span className="text-muted-foreground">—</span>
-                    ) : (
-                      formatMoney(r.totalBase, baseCurrency)
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {r.status === "offboarded" ? (
-                      <Badge variant="outline">Офбординг</Badge>
-                    ) : (
-                      <Badge variant="default">Активен</Badge>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
+      <EmployeesTable rows={rows} baseCurrency={baseCurrency} />
     </div>
   );
 }

@@ -20,6 +20,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { addSeat, endSeat, reopenSeat, markSeatUsed } from "@/lib/actions/seats";
+import { BulkSeatsDialog } from "./bulk-seats-dialog";
 import { formatMoney, formatDate } from "@/lib/format";
 import type { ActionResult } from "@/lib/actions/types";
 
@@ -65,11 +66,22 @@ export function SeatsPanel({
   return (
     <div className="space-y-6">
       {canEdit && (
-        <AddSeatForm
-          serviceId={serviceId}
-          seatPriceDefault={seatPriceDefault}
-          employees={employees}
-        />
+        <div className="space-y-3">
+          <AddSeatForm
+            serviceId={serviceId}
+            seatPriceDefault={seatPriceDefault}
+            employees={employees}
+          />
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">
+              Нужно добавить сразу многих?
+            </span>
+            <BulkSeatsDialog
+              serviceId={serviceId}
+              seatPriceDefault={seatPriceDefault}
+            />
+          </div>
+        </div>
       )}
 
       <div className="space-y-2">

@@ -61,6 +61,7 @@ export const TOOLS: Tool[] = [
         seat_price_default: num(),
         billing_day: num(),
         renewal_date: str("YYYY-MM-DD"),
+        prepaid_until: str("YYYY-MM-DD — оплачено вперёд до"),
         owner_email: str(),
         category: str(),
       },

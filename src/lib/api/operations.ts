@@ -8,6 +8,8 @@ import { writeAudit } from "@/lib/audit";
 import { serviceMonthlyRunRate, normalizeToMonthly } from "@/lib/calc/service-cost";
 import { convert, type RateRecord } from "@/lib/calc/fx";
 import { computeNextPaymentDate } from "@/lib/calc/dates";
+import { isPrepaidFor } from "@/lib/calc/plan";
+import { renewalsInWindow } from "@/lib/calc/renewals";
 import { getMonthlyReport as buildReport, type ReportView } from "@/lib/report/monthly-report";
 import { getExpectedCharges } from "@/lib/plan/expected-charges";
 import { forecastToEndOfMonth } from "@/lib/plan/forecast";
@@ -98,6 +100,7 @@ const serviceCard = (s: {
   price: Prisma.Decimal;
   seatPriceDefault: Prisma.Decimal | null;
   nextPaymentDate: Date | null;
+  prepaidUntil?: Date | null;
   category?: { name: string } | null;
   owner?: { name: string | null; email: string | null };
   seats?: { seatPrice: Prisma.Decimal }[];
@@ -112,6 +115,7 @@ const serviceCard = (s: {
   price: s.price.toString(),
   seat_price_default: s.seatPriceDefault?.toString() ?? null,
   next_payment_date: s.nextPaymentDate?.toISOString().slice(0, 10) ?? null,
+  prepaid_until: s.prepaidUntil?.toISOString().slice(0, 10) ?? null,
   category: s.category?.name ?? null,
   owner: s.owner ? (s.owner.name ?? s.owner.email) : undefined,
   seats_count: s.seats?.length,
@@ -181,6 +185,7 @@ const serviceInput = z.object({
   currency: z.enum(SUPPORTED_CURRENCIES),
   billing_day: z.coerce.number().int().min(1).max(31).optional(),
   renewal_date: z.string().trim().optional(),
+  prepaid_until: z.string().trim().optional(),
   owner_email: z.string().trim().email(),
   status: z.enum(["active", "paused", "cancelled", "archived"]).default("active"),
 });
@@ -206,6 +211,10 @@ async function resolveServiceData(input: z.infer<typeof serviceInput>) {
     throw new ApiError(400, "monthly: нужен billing_day");
   if (!isMonthly && !renewalDate)
     throw new ApiError(400, "yearly: нужен renewal_date");
+  const prepaidUntil = input.prepaid_until
+    ? new Date(`${input.prepaid_until}T00:00:00.000Z`)
+    : null;
+
   return {
     name: input.name,
     vendorUrl: input.vendor_url || null,
@@ -220,8 +229,9 @@ async function resolveServiceData(input: z.infer<typeof serviceInput>) {
     currency: input.currency,
     billingDay,
     renewalDate,
+    prepaidUntil,
     nextPaymentDate: computeNextPaymentDate(
-      { billingCycle: input.billing_cycle, billingDay, renewalDate },
+      { billingCycle: input.billing_cycle, billingDay, renewalDate, prepaidUntil },
       new Date()
     ),
     ownerId: owner.id,
@@ -627,10 +637,17 @@ export async function upcomingPayments(
   }[] = [];
   for (const s of services) {
     const next = computeNextPaymentDate(
-      { billingCycle: s.billingCycle, billingDay: s.billingDay, renewalDate: s.renewalDate },
+      {
+        billingCycle: s.billingCycle,
+        billingDay: s.billingDay,
+        renewalDate: s.renewalDate,
+        prepaidUntil: s.prepaidUntil,
+      },
       now
     );
     if (!next || next > horizon) continue;
+    // Оплачено вперёд — списания в этом окне не ожидаются.
+    if (isPrepaidFor(s.prepaidUntil, next)) continue;
     const cycleCost = serviceMonthlyRunRate({
       billingModel: s.billingModel,
       billingCycle: "monthly", // сумма за списание = стоимость цикла
@@ -665,23 +682,14 @@ export async function needsAttention(_actor: ApiActor) {
       amount_base: c.amountBase,
     }));
 
-  const asOfDay = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
   const yearly = await prisma.service.findMany({
     where: { status: "active", billingCycle: "yearly", renewalDate: { not: null } },
   });
-  const renewals = yearly
-    .map((s) => {
-      const r = s.renewalDate!;
-      const windowStart = r.getTime() - s.cancellationNoticeDays * 86400000;
-      return {
-        service: s.name,
-        renewal_date: r.toISOString().slice(0, 10),
-        days_left: Math.ceil((r.getTime() - asOfDay) / 86400000),
-        in_window: windowStart <= asOfDay && asOfDay <= r.getTime(),
-      };
-    })
-    .filter((x) => x.in_window)
-    .map(({ in_window: _in, ...rest }) => rest);
+  const renewals = renewalsInWindow(yearly, now).map((r) => ({
+    service: r.name,
+    renewal_date: r.renewalDate.toISOString().slice(0, 10),
+    days_left: r.daysLeft,
+  }));
 
   return { overdue_confirmations: overdue, renewals_in_window: renewals };
 }

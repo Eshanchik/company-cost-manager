@@ -175,6 +175,7 @@ model Service {
   currency               String        @default("USD")
   billingDay             Int?
   renewalDate            DateTime?
+  prepaidUntil           DateTime?
   nextPaymentDate        DateTime?
   paymentMethodId        String?
   ownerId                String

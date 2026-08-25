@@ -16,11 +16,28 @@ export async function AppShell({
   children: React.ReactNode;
   user: SessionUser;
 }) {
-  const services = await prisma.service.findMany({
-    where: { status: { not: "archived" } },
-    select: { id: true, name: true, vendorUrl: true },
-    orderBy: { name: "asc" },
-  });
+  const [services, employeesRaw] = await Promise.all([
+    prisma.service.findMany({
+      where: { status: { not: "archived" } },
+      select: { id: true, name: true, vendorUrl: true },
+      orderBy: { name: "asc" },
+    }),
+    prisma.employee.findMany({
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        _count: { select: { seats: { where: { endedAt: null } } } },
+      },
+      orderBy: { fullName: "asc" },
+    }),
+  ]);
+  const employees = employeesRaw.map((e) => ({
+    id: e.id,
+    fullName: e.fullName,
+    email: e.email,
+    seatsCount: e._count.seats,
+  }));
 
   return (
     <div className="flex min-h-screen">
@@ -41,7 +58,11 @@ export async function AppShell({
             <MobileNav role={user.role} />
             <span className="text-sm font-medium">SubTrack</span>
           </div>
-          <CommandPalette services={services} role={user.role} />
+          <CommandPalette
+            services={services}
+            employees={employees}
+            role={user.role}
+          />
           <div className="ml-auto flex items-center gap-2">
             <ThemeToggle />
             <UserMenu user={user} />

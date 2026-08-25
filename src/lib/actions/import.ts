@@ -91,6 +91,7 @@ export async function importServicesCsv(
       const seatPrice = pick(rec, "seat_price", "seatPriceDefault", "цена_места");
       const billingDayStr = pick(rec, "billing_day", "billingDay", "день");
       const renewalStr = pick(rec, "renewal_date", "renewalDate", "дата_продления");
+      const prepaidStr = pick(rec, "prepaid_until", "prepaidUntil", "оплачено_до");
       const categoryId = catByName.get(pick(rec, "category", "категория").toLowerCase()) ?? null;
 
       const billingDay =
@@ -101,8 +102,16 @@ export async function importServicesCsv(
         billingCycle === "yearly" && renewalStr
           ? new Date(`${renewalStr}T00:00:00.000Z`)
           : null;
+      const prepaidUntil = /^\d{4}-\d{2}-\d{2}$/.test(prepaidStr)
+        ? new Date(`${prepaidStr}T00:00:00.000Z`)
+        : null;
       const nextPaymentDate = computeNextPaymentDate(
-        { billingCycle: billingCycle as "monthly" | "yearly", billingDay, renewalDate },
+        {
+          billingCycle: billingCycle as "monthly" | "yearly",
+          billingDay,
+          renewalDate,
+          prepaidUntil,
+        },
         new Date()
       );
 
@@ -120,6 +129,7 @@ export async function importServicesCsv(
             currency,
             billingDay,
             renewalDate,
+            prepaidUntil,
             nextPaymentDate,
             categoryId,
             ownerId,

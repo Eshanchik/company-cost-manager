@@ -75,6 +75,7 @@ export default async function ServicesPage() {
     paymentMethodId: s.paymentMethodId,
     paymentMethodName: s.paymentMethod?.name ?? null,
     nextPaymentDate: s.nextPaymentDate?.toISOString() ?? null,
+    prepaidUntil: s.prepaidUntil?.toISOString() ?? null,
     status: s.status,
     };
   });

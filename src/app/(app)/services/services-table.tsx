@@ -55,6 +55,7 @@ export type ServiceRow = {
   paymentMethodId: string | null;
   paymentMethodName: string | null;
   nextPaymentDate: string | null;
+  prepaidUntil: string | null;
   status: ServiceStatus;
 };
 
@@ -360,7 +361,19 @@ export function ServicesTable({
                   </TableCell>
                   <TableCell className="text-sm">{r.ownerLabel}</TableCell>
                   <TableCell className="text-sm">
-                    {formatDate(r.nextPaymentDate)}
+                    {r.prepaidUntil ? (
+                      <span
+                        className="flex flex-col"
+                        title={`Оплачено вперёд до ${formatDate(r.prepaidUntil)}`}
+                      >
+                        <span>{formatDate(r.nextPaymentDate)}</span>
+                        <span className="text-xs text-muted-foreground">
+                          оплачено до {formatDate(r.prepaidUntil)}
+                        </span>
+                      </span>
+                    ) : (
+                      formatDate(r.nextPaymentDate)
+                    )}
                   </TableCell>
                   <TableCell>
                     <Badge variant={STATUS_VARIANT[r.status]}>

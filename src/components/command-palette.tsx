@@ -25,12 +25,20 @@ import {
 } from "@/components/ui/command";
 
 export type PaletteService = { id: string; name: string; vendorUrl: string | null };
+export type PaletteEmployee = {
+  id: string;
+  fullName: string;
+  email: string;
+  seatsCount: number;
+};
 
 export function CommandPalette({
   services,
+  employees,
   role,
 }: {
   services: PaletteService[];
+  employees: PaletteEmployee[];
   role: Role;
 }) {
   const router = useRouter();
@@ -98,6 +106,29 @@ export function CommandPalette({
               <Settings /> Настройки
             </CommandItem>
           )}
+        </CommandGroup>
+
+        <CommandGroup heading="Сотрудники (поиск по email)">
+          {employees.map((e) => (
+            <CommandItem
+              key={e.id}
+              value={`сотрудник ${e.fullName} ${e.email}`}
+              onSelect={() => go(`/employees/${e.id}`)}
+            >
+              <Users />
+              <span className="flex flex-1 items-center justify-between gap-2">
+                <span>
+                  {e.fullName}
+                  <span className="ml-2 text-xs text-muted-foreground">
+                    {e.email}
+                  </span>
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {e.seatsCount > 0 ? `сервисов: ${e.seatsCount}` : "без мест"}
+                </span>
+              </span>
+            </CommandItem>
+          ))}
         </CommandGroup>
 
         <CommandGroup heading="Сервисы">

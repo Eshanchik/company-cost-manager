@@ -38,14 +38,26 @@ export function computeNextPaymentDate(
     billingCycle: BillingCycle;
     billingDay: number | null;
     renewalDate: Date | null;
+    /** «Оплачено вперёд до» — следующий платёж не раньше следующего дня. */
+    prepaidUntil?: Date | null;
   },
   from: Date
 ): Date | null {
+  // Если сервис проплачен вперёд, ищем ближайшее списание ПОСЛЕ этой даты.
+  const searchFrom = input.prepaidUntil
+    ? new Date(
+        Math.max(
+          atMidnight(from).getTime(),
+          atMidnight(input.prepaidUntil).getTime() + 86400000
+        )
+      )
+    : from;
+
   if (input.billingCycle === "monthly" && input.billingDay != null) {
-    return nextMonthlyPayment(input.billingDay, from);
+    return nextMonthlyPayment(input.billingDay, searchFrom);
   }
   if (input.billingCycle === "yearly" && input.renewalDate) {
-    return nextYearlyPayment(input.renewalDate, from);
+    return nextYearlyPayment(input.renewalDate, searchFrom);
   }
   return null;
 }
