@@ -38,8 +38,15 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "list_services",
-    description: "Список сервисов. Фильтры: status, category, owner, q",
-    inputSchema: obj({ status: str(), category: str(), owner: str(), q: str() }),
+    description:
+      "Список сервисов. Фильтры: status, category, owner, q, kind (service|domain)",
+    inputSchema: obj({
+      status: str(),
+      category: str(),
+      owner: str(),
+      q: str(),
+      kind: str("service | domain"),
+    }),
     handler: (a, args) => ops.listServices(a, args as never),
   },
   {
@@ -55,7 +62,13 @@ export const TOOLS: Tool[] = [
       {
         name: str(),
         billing_model: { type: "string", enum: ["fixed", "per_seat", "hybrid"] },
-        billing_cycle: { type: "string", enum: ["monthly", "yearly"] },
+        billing_cycle: {
+          type: "string",
+          enum: ["monthly", "quarterly", "yearly"],
+        },
+        kind: { type: "string", enum: ["service", "domain"] },
+        registrar: str("регистратор — для доменов"),
+        auto_renew: { type: "boolean" },
         currency: str(),
         price: num(),
         seat_price_default: num(),

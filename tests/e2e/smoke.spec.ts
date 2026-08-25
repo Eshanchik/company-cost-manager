@@ -183,3 +183,65 @@ test("массовое добавление мест, отсрочка опла�
     page.locator("div.divide-y > div").filter({ hasText: svcName })
   ).toHaveCount(0);
 });
+
+test("домены: отдельный экран, годовая оплата, учёт в расходах", async ({
+  page,
+}) => {
+  await login(page);
+  const stamp = Date.now();
+  const domain = `e2e-${stamp}.one`;
+
+  // Создать домен на экране «Домены»
+  await page.goto("/domains");
+  await expect(page.getByRole("heading", { name: "Домены" })).toBeVisible();
+  await page.getByRole("button", { name: "Добавить домен" }).click();
+  const dlg = page.getByRole("dialog");
+  await expect(dlg.getByText("Новый домен")).toBeVisible();
+  await dlg.locator('input[name="name"]').fill(domain);
+  await dlg.locator('input[name="registrar"]').fill("Cloudflare");
+  await dlg.locator('input[name="price"]').fill("120");
+  await dlg.locator('input[name="renewalDate"]').fill("2027-06-30");
+  await dlg
+    .locator('select[name="ownerId"]')
+    .selectOption({ label: "Администратор" });
+  await dlg.getByRole("button", { name: "Создать" }).click();
+  await expect(page.getByText(/Сервис создан/)).toBeVisible();
+
+  // Домен в списке доменов, стоимость амортизирована на месяц (120/12 = 10)
+  const row = page.getByRole("row").filter({ hasText: domain });
+  await expect(row).toBeVisible();
+  await expect(row.getByText("Cloudflare")).toBeVisible();
+  await expect(row.getByText(/10,00|10\.00/)).toBeVisible();
+
+  // Домен НЕ засоряет список сервисов
+  await page.goto("/services");
+  await expect(page.getByRole("link", { name: domain })).toHaveCount(0);
+});
+
+test("квартальный цикл доступен в форме сервиса", async ({ page }) => {
+  await login(page);
+  const stamp = Date.now();
+  const svcName = `E2E Quarterly ${stamp}`;
+
+  await page.goto("/services");
+  await page.getByRole("button", { name: "Добавить сервис" }).click();
+  const dlg = page.getByRole("dialog");
+  await dlg.locator('input[name="name"]').fill(svcName);
+  await dlg.locator('select[name="billingModel"]').selectOption("fixed");
+  await dlg.locator('select[name="billingCycle"]').selectOption("quarterly");
+  // Для квартального цикла показывается опорная дата, а не день месяца
+  await expect(dlg.getByText("Опорная дата списания")).toBeVisible();
+  await dlg.locator('input[name="price"]').fill("300");
+  await dlg.locator('input[name="renewalDate"]').fill("2026-02-10");
+  await dlg
+    .locator('select[name="ownerId"]')
+    .selectOption({ label: "Администратор" });
+  await dlg.getByRole("button", { name: "Создать" }).click();
+  await expect(page.getByText(/Сервис создан/)).toBeVisible();
+
+  // Нормализованная стоимость = 300 / 3 = 100
+  const row = page.getByRole("row").filter({ hasText: svcName });
+  await expect(row).toBeVisible();
+  await expect(row.getByText(/100,00|100\.00/)).toBeVisible();
+  await expect(row.getByText("Ежеквартально")).toBeVisible();
+});

@@ -28,6 +28,9 @@ import type { ActionResult } from "@/lib/actions/types";
 
 export type ServiceDefaults = {
   id: string;
+  kind: "service" | "domain";
+  registrar: string;
+  autoRenew: boolean;
   name: string;
   vendorUrl: string;
   categoryId: string;
@@ -60,11 +63,14 @@ export function ServiceDialog({
   onOpenChange,
   service,
   options,
+  kind = "service",
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   service: ServiceDefaults | null;
   options: ServiceOptions;
+  /** Вид создаваемой записи: обычный сервис или домен. */
+  kind?: "service" | "domain";
 }) {
   const action = service ? updateService : createService;
   const [state, formAction] = useActionState<ActionResult | null, FormData>(
@@ -72,11 +78,15 @@ export function ServiceDialog({
     null
   );
   const [model, setModel] = React.useState<BillingModel>(
-    service?.billingModel ?? "per_seat"
+    service?.billingModel ?? (kind === "domain" ? "fixed" : "per_seat")
   );
   const [cycle, setCycle] = React.useState<BillingCycle>(
-    service?.billingCycle ?? "monthly"
+    service?.billingCycle ?? (kind === "domain" ? "yearly" : "monthly")
   );
+  const effectiveKind = service?.kind ?? kind;
+  const isDomain = effectiveKind === "domain";
+  // У домена модель всегда «фиксированная» — поля мест не показываем.
+  const effectiveModel: BillingModel = isDomain ? "fixed" : model;
 
   React.useEffect(() => {
     if (!state) return;
@@ -98,11 +108,22 @@ export function ServiceDialog({
         <form action={formAction} className="space-y-4">
           <DialogHeader>
             <DialogTitle>
-              {service ? "Изменить сервис" : "Новый сервис"}
+              {service
+                ? isDomain
+                  ? "Изменить домен"
+                  : "Изменить сервис"
+                : isDomain
+                  ? "Новый домен"
+                  : "Новый сервис"}
             </DialogTitle>
-            <DialogDescription>Подписка и параметры списаний.</DialogDescription>
+            <DialogDescription>
+              {isDomain
+                ? "Домен, регистратор и дата продления. Стоимость учитывается в общих расходах."
+                : "Подписка и параметры списаний."}
+            </DialogDescription>
           </DialogHeader>
           {service && <input type="hidden" name="id" value={service.id} />}
+          <input type="hidden" name="kind" value={effectiveKind} />
 
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Название" className="sm:col-span-2">
@@ -127,9 +148,15 @@ export function ServiceDialog({
             </Field>
 
             <Field label="Модель биллинга">
+              {/* disabled-поля не попадают в FormData — для домена
+                  отправляем значение скрытым инпутом. */}
+              {isDomain && (
+                <input type="hidden" name="billingModel" value="fixed" />
+              )}
               <NativeSelect
-                name="billingModel"
-                value={model}
+                name={isDomain ? undefined : "billingModel"}
+                value={effectiveModel}
+                disabled={isDomain}
                 onChange={(e) => setModel(e.target.value as BillingModel)}
               >
                 {(["fixed", "per_seat", "hybrid"] as const).map((m) => (
@@ -145,7 +172,7 @@ export function ServiceDialog({
                 value={cycle}
                 onChange={(e) => setCycle(e.target.value as BillingCycle)}
               >
-                {(["monthly", "yearly"] as const).map((c) => (
+                {(["monthly", "quarterly", "yearly"] as const).map((c) => (
                   <option key={c} value={c}>
                     {BILLING_CYCLE_LABEL[c]}
                   </option>
@@ -153,7 +180,7 @@ export function ServiceDialog({
               </NativeSelect>
             </Field>
 
-            {model !== "per_seat" && (
+            {effectiveModel !== "per_seat" && (
               <Field label="Фикс. цена (за цикл)">
                 <Input
                   name="price"
@@ -164,7 +191,7 @@ export function ServiceDialog({
                 />
               </Field>
             )}
-            {model !== "fixed" && (
+            {effectiveModel !== "fixed" && (
               <Field label="Цена места (за цикл)">
                 <Input
                   name="seatPriceDefault"
@@ -197,12 +224,25 @@ export function ServiceDialog({
                 />
               </Field>
             ) : (
-              <Field label="Дата продления">
+              <Field
+                label={
+                  cycle === "quarterly"
+                    ? "Опорная дата списания"
+                    : isDomain
+                      ? "Дата продления домена"
+                      : "Дата продления"
+                }
+              >
                 <Input
                   name="renewalDate"
                   type="date"
                   defaultValue={service?.renewalDate ?? ""}
                 />
+                {cycle === "quarterly" && (
+                  <p className="text-xs text-muted-foreground">
+                    Любое известное списание — задаёт день и фазу квартала.
+                  </p>
+                )}
               </Field>
             )}
 
@@ -266,6 +306,28 @@ export function ServiceDialog({
                   max="365"
                   defaultValue={service?.cancellationNoticeDays ?? "30"}
                 />
+              </Field>
+            )}
+            {isDomain && (
+              <Field label="Регистратор">
+                <Input
+                  name="registrar"
+                  defaultValue={service?.registrar ?? ""}
+                  placeholder="Namecheap, Cloudflare…"
+                />
+              </Field>
+            )}
+            {isDomain && (
+              <Field label="Авто-продление">
+                <label className="flex h-9 items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    name="autoRenew"
+                    defaultChecked={service?.autoRenew ?? true}
+                    className="size-4"
+                  />
+                  Включено у регистратора
+                </label>
               </Field>
             )}
             <Field label="Оплачено вперёд до">

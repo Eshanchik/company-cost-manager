@@ -24,6 +24,7 @@ function d(date: Date | null): string {
 
 export async function exportServicesCsv(): Promise<string> {
   const services = await prisma.service.findMany({
+    where: { kind: "service" },
     include: {
       category: true,
       owner: true,
@@ -68,6 +69,39 @@ export async function exportServicesCsv(): Promise<string> {
       "Способ оплаты",
       "След. оплата",
       "Оплачено до",
+      "Статус",
+    ],
+    rows
+  );
+}
+
+export async function exportDomainsCsv(): Promise<string> {
+  const domains = await prisma.service.findMany({
+    where: { kind: "domain" },
+    include: { owner: true },
+    orderBy: { name: "asc" },
+  });
+  const rows = domains.map((s) => [
+    s.name,
+    s.registrar ?? "",
+    d(s.renewalDate),
+    s.price.toString(),
+    s.currency,
+    s.autoRenew ? "да" : "нет",
+    d(s.prepaidUntil),
+    s.owner.name ?? s.owner.email ?? "",
+    STATUS_LABEL[s.status],
+  ]);
+  return toCsv(
+    [
+      "Домен",
+      "Регистратор",
+      "Дата продления",
+      "Цена/год",
+      "Валюта",
+      "Авто-продление",
+      "Оплачено до",
+      "Ответственный",
       "Статус",
     ],
     rows

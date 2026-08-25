@@ -21,10 +21,11 @@ import {
   importServicesCsv,
   importSeatsCsv,
   importPaymentsCsv,
+  importDomainsCsv,
   type ImportResult,
 } from "@/lib/actions/import";
 
-type ImportKind = "services" | "seats" | "payments";
+type ImportKind = "services" | "seats" | "payments" | "domains";
 
 const HINTS: Record<ImportKind, string> = {
   services:
@@ -32,18 +33,22 @@ const HINTS: Record<ImportKind, string> = {
   seats: "Заголовки: service, email, seat_price, full_name",
   payments:
     "Заголовки: service, paid_at (YYYY-MM-DD), amount, currency, comment, invoice_url",
+  domains:
+    "Заголовки: name (домен), registrar, renewal_date (YYYY-MM-DD — истечение), price (за год), currency, owner_email, auto_renew",
 };
 
 const KIND_LABEL: Record<ImportKind, string> = {
   services: "сервисов",
   seats: "мест",
   payments: "платежей",
+  domains: "доменов",
 };
 
 const ACTIONS = {
   services: importServicesCsv,
   seats: importSeatsCsv,
   payments: importPaymentsCsv,
+  domains: importDomainsCsv,
 };
 
 export function CsvImportDialog({ kind }: { kind: ImportKind }) {
@@ -104,7 +109,9 @@ export function CsvImportDialog({ kind }: { kind: ImportKind }) {
                     ? "name,billing_model,billing_cycle,currency,seat_price,billing_day,owner_email\nMiro,per_seat,monthly,USD,8,5,ivan.petrov@example.com"
                     : kind === "seats"
                       ? "service,email,seat_price\nFigma,new.person@company.com,15"
-                      : "service,paid_at,amount,currency\nFigma,2026-07-05,65,USD"
+                      : kind === "payments"
+                        ? "service,paid_at,amount,currency\nFigma,2026-07-05,65,USD"
+                        : "name,registrar,renewal_date,price,currency\ngt1.one,Cloudflare,2027-06-30,12,USD"
                 }
               />
             </div>

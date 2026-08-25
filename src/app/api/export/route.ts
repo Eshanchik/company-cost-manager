@@ -5,6 +5,7 @@ import {
   exportServicesCsv,
   exportEmployeesCsv,
   exportPaymentsCsv,
+  exportDomainsCsv,
 } from "@/lib/csv/table-export";
 
 export async function GET(req: Request) {
@@ -25,9 +26,12 @@ export async function GET(req: Request) {
     case "payments":
       csv = await exportPaymentsCsv();
       break;
+    case "domains":
+      csv = await exportDomainsCsv();
+      break;
     default:
       return NextResponse.json(
-        { error: "kind: services | employees | payments" },
+        { error: "kind: services | employees | payments | domains" },
         { status: 400 }
       );
   }

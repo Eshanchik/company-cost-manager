@@ -392,3 +392,115 @@ export async function importPaymentsCsv(
     return { ok: false, error: "Не удалось импортировать платежи" };
   }
 }
+
+// ── Импорт доменов ───────────────────────────────────────────────────────────
+
+/**
+ * Импорт доменов из CSV: name/domain, registrar, renewal_date (истечение),
+ * price (за год), currency, owner_email, auto_renew.
+ * Дедупликация по имени домена. Домен = Service{kind:"domain", fixed, yearly}.
+ */
+export async function importDomainsCsv(
+  _prev: ImportResult | null,
+  formData: FormData
+): Promise<ImportResult> {
+  try {
+    const actor = await requireManager();
+    const text = String(formData.get("csv") ?? "");
+    const { records } = parseCsv(text);
+    if (records.length === 0) return { ok: false, error: "Пустой CSV" };
+
+    const [users, existing] = await Promise.all([
+      prisma.user.findMany({ select: { id: true, email: true } }),
+      prisma.service.findMany({
+        where: { kind: "domain" },
+        select: { name: true },
+      }),
+    ]);
+    const userByEmail = new Map(
+      users.filter((u) => u.email).map((u) => [u.email!.toLowerCase(), u.id])
+    );
+    const fallbackOwner = users[0]?.id;
+
+    const { unique, duplicates } = partitionUnique(
+      records,
+      (r) => pick(r, "name", "domain", "домен"),
+      existing.map((e) => e.name)
+    );
+
+    const errors: string[] = [];
+    let created = 0;
+
+    for (const rec of unique) {
+      const name = pick(rec, "name", "domain", "домен").toLowerCase();
+      if (!name) {
+        errors.push("Пустое имя домена");
+        continue;
+      }
+      const ownerEmail = pick(rec, "owner_email", "ownerEmail", "ответственный")
+        .toLowerCase();
+      const ownerId = userByEmail.get(ownerEmail) ?? fallbackOwner;
+      if (!ownerId) {
+        errors.push(`«${name}»: не найден ответственный`);
+        continue;
+      }
+      const renewalStr = pick(
+        rec,
+        "renewal_date",
+        "expiry",
+        "expires_at",
+        "дата_продления",
+        "истекает"
+      );
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(renewalStr)) {
+        errors.push(`«${name}»: некорректная дата продления (${renewalStr || "—"})`);
+        continue;
+      }
+      const renewalDate = new Date(`${renewalStr}T00:00:00.000Z`);
+      const price = Number(pick(rec, "price", "цена") || "0");
+      const currency = pick(rec, "currency", "валюта") || "USD";
+      const autoRenewRaw = pick(rec, "auto_renew", "autoRenew", "автопродление");
+      const autoRenew = autoRenewRaw === "" ? true : /^(1|true|yes|да|вкл)$/i.test(autoRenewRaw);
+
+      try {
+        const svc = await prisma.service.create({
+          data: {
+            kind: "domain",
+            name,
+            registrar: pick(rec, "registrar", "регистратор") || null,
+            autoRenew,
+            billingModel: "fixed",
+            billingCycle: "yearly",
+            price: new Prisma.Decimal(price),
+            currency,
+            renewalDate,
+            nextPaymentDate: computeNextPaymentDate(
+              { billingCycle: "yearly", billingDay: null, renewalDate },
+              new Date()
+            ),
+            ownerId,
+          },
+        });
+        created++;
+        await writeAudit({
+          entity: "Service",
+          entityId: svc.id,
+          actor: actor.email ?? actor.id,
+          action: "import",
+          diff: { name, kind: "domain", source: "csv" },
+        });
+      } catch (e) {
+        console.error("import domain:", e);
+        errors.push(`«${name}»: ошибка вставки`);
+      }
+    }
+
+    revalidatePath("/domains");
+    revalidatePath("/");
+    return { ok: true, created, skippedDuplicates: duplicates.length, errors };
+  } catch (e) {
+    if (e instanceof AuthorizationError) return { ok: false, error: e.message };
+    console.error("importDomainsCsv:", e);
+    return { ok: false, error: "Не удалось импортировать домены" };
+  }
+}

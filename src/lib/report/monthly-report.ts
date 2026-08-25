@@ -105,9 +105,13 @@ export async function getMonthlyReport(
       }),
     ]);
 
-  // Множитель нормализации: yearly / 12 в нормализованном представлении.
-  const factor = (billingCycle: string) =>
-    view === "normalized" && billingCycle === "yearly" ? new D(1).div(12) : new D(1);
+  // Множитель нормализации: yearly / 12, quarterly / 3 (нормализованный вид).
+  const factor = (billingCycle: string) => {
+    if (view !== "normalized") return new D(1);
+    if (billingCycle === "yearly") return new D(1).div(12);
+    if (billingCycle === "quarterly") return new D(1).div(3);
+    return new D(1);
+  };
 
   type Agg = {
     name: string;

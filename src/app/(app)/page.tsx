@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AlertTriangle, CalendarClock } from "lucide-react";
+import { AlertTriangle, CalendarClock, Globe } from "lucide-react";
 
 import { getCurrentUser, hasRole } from "@/lib/authz";
 import { getExpectedCharges } from "@/lib/plan/expected-charges";
@@ -32,7 +32,10 @@ export default async function DashboardPage() {
   ]);
 
   const attentionCount =
-    m.overdue.length + m.renewals.length + unused.seats.length;
+    m.overdue.length +
+    m.renewals.length +
+    unused.seats.length +
+    m.expiringDomains.length;
 
   // Пустой инстанс — вместо нулевых KPI показываем онбординг.
   if (m.activeServices === 0 && m.monthFact === 0) {
@@ -86,8 +89,9 @@ export default async function DashboardPage() {
         <Kpi title="Прогноз" description="Осталось до конца месяца">
           {formatMoney(m.forecastRemaining, m.base)}
         </Kpi>
-        <Kpi title="Активные" description="Сервисы / места">
-          {m.activeServices} / {m.activeSeats}
+        <Kpi title="Активные" description="Сервисы / места / домены">
+          {m.activeServices - m.domainsCount} / {m.activeSeats} /{" "}
+          {m.domainsCount}
         </Kpi>
       </div>
 
@@ -150,6 +154,38 @@ export default async function DashboardPage() {
                         <span className="text-muted-foreground">
                           продление {formatDate(r.renewalDate)} · через{" "}
                           {r.daysLeft} дн.
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {m.expiringDomains.length > 0 && (
+                <div>
+                  <h3 className="mb-1 flex items-center gap-1 text-sm font-medium">
+                    <Globe className="size-4" /> Домены истекают (
+                    {m.expiringDomains.length})
+                  </h3>
+                  <ul className="space-y-1 text-sm">
+                    {m.expiringDomains.map((d) => (
+                      <li key={d.serviceId} className="flex justify-between gap-2">
+                        <Link
+                          href={`/services/${d.serviceId}`}
+                          className="hover:underline"
+                        >
+                          {d.name}
+                          {!d.autoRenew && (
+                            <Badge variant="destructive" className="ml-2">
+                              без авто-продления
+                            </Badge>
+                          )}
+                        </Link>
+                        <span className="text-muted-foreground">
+                          {d.registrar ? `${d.registrar} · ` : ""}
+                          {formatDate(d.renewalDate)} ·{" "}
+                          {d.daysLeft < 0
+                            ? `просрочен ${-d.daysLeft} дн.`
+                            : `через ${d.daysLeft} дн.`}
                         </span>
                       </li>
                     ))}

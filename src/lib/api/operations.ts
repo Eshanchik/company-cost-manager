@@ -5,7 +5,11 @@ import { prisma } from "@/lib/prisma";
 import { requireApiRole, ApiError } from "@/lib/api/authz";
 import type { ApiActor } from "@/lib/api/token";
 import { writeAudit } from "@/lib/audit";
-import { serviceMonthlyRunRate, normalizeToMonthly } from "@/lib/calc/service-cost";
+import {
+  serviceMonthlyRunRate,
+  normalizeToMonthly,
+  serviceCycleCost,
+} from "@/lib/calc/service-cost";
 import { convert, type RateRecord } from "@/lib/calc/fx";
 import { computeNextPaymentDate } from "@/lib/calc/dates";
 import { isPrepaidFor } from "@/lib/calc/plan";
@@ -91,6 +95,9 @@ export async function overview(_actor: ApiActor) {
 
 const serviceCard = (s: {
   id: string;
+  kind?: string;
+  registrar?: string | null;
+  autoRenew?: boolean;
   name: string;
   vendorUrl: string | null;
   billingModel: string;
@@ -106,6 +113,9 @@ const serviceCard = (s: {
   seats?: { seatPrice: Prisma.Decimal }[];
 }) => ({
   id: s.id,
+  kind: s.kind ?? "service",
+  registrar: s.registrar ?? null,
+  auto_renew: s.autoRenew ?? null,
   name: s.name,
   vendor_url: s.vendorUrl,
   billing_model: s.billingModel,
@@ -131,9 +141,17 @@ const serviceCard = (s: {
 
 export async function listServices(
   _actor: ApiActor,
-  params: { status?: string; category?: string; owner?: string; q?: string }
+  params: {
+    status?: string;
+    category?: string;
+    owner?: string;
+    q?: string;
+    kind?: string;
+  }
 ) {
   const where: Prisma.ServiceWhereInput = {};
+  if (params.kind === "domain" || params.kind === "service")
+    where.kind = params.kind;
   if (params.status) where.status = params.status as Prisma.ServiceWhereInput["status"];
   if (params.category) where.category = { name: { equals: params.category, mode: "insensitive" } };
   if (params.owner)
@@ -178,8 +196,11 @@ const serviceInput = z.object({
   name: z.string().trim().min(1).max(120),
   vendor_url: z.string().trim().optional(),
   category: z.string().trim().optional(),
+  kind: z.enum(["service", "domain"]).optional(),
+  registrar: z.string().trim().optional(),
+  auto_renew: z.boolean().optional(),
   billing_model: z.enum(["fixed", "per_seat", "hybrid"]),
-  billing_cycle: z.enum(["monthly", "yearly"]),
+  billing_cycle: z.enum(["monthly", "quarterly", "yearly"]),
   price: z.coerce.number().min(0).default(0),
   seat_price_default: z.coerce.number().min(0).optional(),
   currency: z.enum(SUPPORTED_CURRENCIES),
@@ -210,12 +231,20 @@ async function resolveServiceData(input: z.infer<typeof serviceInput>) {
   if (isMonthly && billingDay == null)
     throw new ApiError(400, "monthly: нужен billing_day");
   if (!isMonthly && !renewalDate)
-    throw new ApiError(400, "yearly: нужен renewal_date");
+    throw new ApiError(
+      400,
+      input.billing_cycle === "quarterly"
+        ? "quarterly: нужна опорная дата renewal_date"
+        : "yearly: нужен renewal_date"
+    );
   const prepaidUntil = input.prepaid_until
     ? new Date(`${input.prepaid_until}T00:00:00.000Z`)
     : null;
 
   return {
+    kind: input.kind ?? "service",
+    registrar: input.registrar || null,
+    autoRenew: input.auto_renew ?? true,
     name: input.name,
     vendorUrl: input.vendor_url || null,
     categoryId: category?.id ?? null,
@@ -648,17 +677,14 @@ export async function upcomingPayments(
     if (!next || next > horizon) continue;
     // Оплачено вперёд — списания в этом окне не ожидаются.
     if (isPrepaidFor(s.prepaidUntil, next)) continue;
-    const cycleCost = serviceMonthlyRunRate({
+    // Сумма одного списания = стоимость биллингового цикла (§4.1).
+    // Раньше здесь для yearly ещё умножали на 12 — годовые списания
+    // раздувались двенадцатикратно.
+    const amount = serviceCycleCost({
       billingModel: s.billingModel,
-      billingCycle: "monthly", // сумма за списание = стоимость цикла
       price: s.price,
       seats: s.seats,
     });
-    // Для yearly списание = годовая сумма; run-rate уже /12, поэтому берём цикловую.
-    const amount =
-      s.billingCycle === "yearly"
-        ? cycleCost.mul(12)
-        : cycleCost;
     out.push({
       service: s.name,
       date: next.toISOString().slice(0, 10),

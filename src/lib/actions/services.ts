@@ -13,7 +13,10 @@ import { SUPPORTED_CURRENCIES } from "@/lib/currencies";
 import { type ActionResult, ok, fail } from "@/lib/actions/types";
 
 const AUDIT_FIELDS = [
+  "kind",
   "name",
+  "registrar",
+  "autoRenew",
   "vendorUrl",
   "categoryId",
   "description",
@@ -39,8 +42,11 @@ const schema = z
     vendorUrl: z.string().trim().max(300).optional().or(z.literal("")),
     categoryId: z.string().trim().optional().or(z.literal("")),
     description: z.string().trim().max(2000).optional().or(z.literal("")),
+    kind: z.enum(["service", "domain"]).default("service"),
+    registrar: z.string().trim().max(120).optional().or(z.literal("")),
+    autoRenew: z.coerce.boolean().default(true),
     billingModel: z.enum(["fixed", "per_seat", "hybrid"]),
-    billingCycle: z.enum(["monthly", "yearly"]),
+    billingCycle: z.enum(["monthly", "quarterly", "yearly"]),
     price: z.coerce.number().min(0).default(0),
     seatPriceDefault: z.coerce.number().min(0).optional(),
     currency: z.enum(SUPPORTED_CURRENCIES),
@@ -79,6 +85,20 @@ const schema = z
         message: "Для yearly укажите дату продления",
       });
     }
+    if (v.billingCycle === "quarterly" && !v.renewalDate) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["renewalDate"],
+        message: "Для quarterly укажите опорную дату списания",
+      });
+    }
+    if (v.kind === "domain" && v.billingModel !== "fixed") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["billingModel"],
+        message: "У домена не бывает мест — модель только «фиксированная»",
+      });
+    }
   });
 
 type Normalized = {
@@ -110,6 +130,9 @@ function normalize(
 
   return {
     data: {
+      kind: v.kind,
+      registrar: v.registrar || null,
+      autoRenew: v.autoRenew,
       name: v.name,
       vendorUrl: v.vendorUrl || null,
       categoryId: v.categoryId || null,
@@ -138,6 +161,9 @@ function normalize(
 
 function parseForm(formData: FormData) {
   return schema.safeParse({
+    kind: formData.get("kind") ?? "service",
+    registrar: formData.get("registrar") ?? "",
+    autoRenew: formData.get("autoRenew") === "on" || formData.get("autoRenew") === "true",
     name: formData.get("name"),
     vendorUrl: formData.get("vendorUrl") ?? "",
     categoryId: formData.get("categoryId") ?? "",

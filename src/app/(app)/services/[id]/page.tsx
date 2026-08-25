@@ -45,6 +45,9 @@ function ownerLabel(u: { name: string | null; email: string | null }): string {
 
 function toDefaults(s: {
   id: string;
+  kind: "service" | "domain";
+  registrar: string | null;
+  autoRenew: boolean;
   name: string;
   vendorUrl: string | null;
   categoryId: string | null;
@@ -67,6 +70,9 @@ function toDefaults(s: {
 }): ServiceDefaults {
   return {
     id: s.id,
+    kind: s.kind,
+    registrar: s.registrar ?? "",
+    autoRenew: s.autoRenew,
     name: s.name,
     vendorUrl: s.vendorUrl ?? "",
     categoryId: s.categoryId ?? "",

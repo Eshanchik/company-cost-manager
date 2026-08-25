@@ -33,6 +33,29 @@ export function nextYearlyPayment(renewalDate: Date, from: Date): Date {
   return clampToMonth(y + 1, month0, day);
 }
 
+/**
+ * Ближайшее квартальное списание ≥ `from`. Фазу и день задаёт `anchor`
+ * (опорная дата: любое известное списание этого сервиса).
+ */
+export function nextQuarterlyPayment(anchor: Date, from: Date): Date {
+  const day = anchor.getUTCDate();
+  const anchorM = anchor.getUTCFullYear() * 12 + anchor.getUTCMonth();
+  const fromMid = atMidnight(from);
+  const fromM = fromMid.getUTCFullYear() * 12 + fromMid.getUTCMonth();
+
+  let k = Math.ceil((fromM - anchorM) / 3);
+  if (k < 0) k = 0;
+
+  // Максимум 2 шага: подобранный квартал может оказаться раньше `from` по дню.
+  for (let i = 0; i < 3; i++) {
+    const m = anchorM + (k + i) * 3;
+    const candidate = clampToMonth(Math.floor(m / 12), m % 12, day);
+    if (candidate.getTime() >= fromMid.getTime()) return candidate;
+  }
+  const m = anchorM + (k + 3) * 3;
+  return clampToMonth(Math.floor(m / 12), m % 12, day);
+}
+
 export function computeNextPaymentDate(
   input: {
     billingCycle: BillingCycle;
@@ -55,6 +78,9 @@ export function computeNextPaymentDate(
 
   if (input.billingCycle === "monthly" && input.billingDay != null) {
     return nextMonthlyPayment(input.billingDay, searchFrom);
+  }
+  if (input.billingCycle === "quarterly" && input.renewalDate) {
+    return nextQuarterlyPayment(input.renewalDate, searchFrom);
   }
   if (input.billingCycle === "yearly" && input.renewalDate) {
     return nextYearlyPayment(input.renewalDate, searchFrom);

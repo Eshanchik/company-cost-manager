@@ -20,6 +20,8 @@ export default async function ServicesPage() {
   const [services, categories, users, methods, settings, ratesRaw] =
     await Promise.all([
       prisma.service.findMany({
+        // Домены живут на своём экране, чтобы не забивать список подписок.
+        where: { kind: "service" },
         include: {
           category: true,
           owner: true,
