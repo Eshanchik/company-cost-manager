@@ -7,6 +7,7 @@ import { convert, type RateRecord } from "@/lib/calc/fx";
 import { Button } from "@/components/ui/button";
 import { CsvImportDialog } from "@/components/csv-import-dialog";
 import { DomainsTable, type DomainRow } from "./domains-table";
+import { DomainGuardSync } from "./domainguard-sync";
 import type { ServiceOptions, ServiceDefaults } from "@/components/service-dialog";
 
 function ownerLabel(u: { name: string | null; email: string | null }): string {
@@ -18,6 +19,10 @@ const DAY_MS = 86_400_000;
 export default async function DomainsPage() {
   const user = await getCurrentUser();
   const canEdit = user ? hasRole(user.role, "manager") : false;
+  const isAdmin = user ? hasRole(user.role, "admin") : false;
+  const dgConfigured = Boolean(
+    process.env.DOMAINGUARD_URL && process.env.DOMAINGUARD_TOKEN
+  );
 
   const [domains, categories, users, methods, settings, ratesRaw] =
     await Promise.all([
@@ -136,6 +141,8 @@ export default async function DomainsPage() {
           </Button>
         </div>
       </div>
+
+      {isAdmin && dgConfigured && <DomainGuardSync />}
 
       <DomainsTable
         rows={rows}
