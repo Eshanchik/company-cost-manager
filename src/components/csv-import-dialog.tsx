@@ -34,7 +34,7 @@ const HINTS: Record<ImportKind, string> = {
   payments:
     "Заголовки: service, paid_at (YYYY-MM-DD), amount, currency, comment, invoice_url",
   domains:
-    "Заголовки: name (домен), registrar, renewal_date (YYYY-MM-DD — истечение), price (за год), currency, owner_email, auto_renew",
+    "Заголовки: name/fqdn, registrar, renewal_date (или expiry_date), price, currency, auto_renew, owner_email. Существующие домены не пропускаются, а дозаполняются — так подтягивается регистратор, которого нет в API реестра.",
 };
 
 const KIND_LABEL: Record<ImportKind, string> = {
@@ -73,7 +73,9 @@ export function CsvImportDialog({ kind }: { kind: ImportKind }) {
     if (!state) return;
     if (state.ok) {
       toast.success(
-        `Импортировано: ${state.created}, пропущено дублей: ${state.skippedDuplicates}` +
+        `Создано: ${state.created}` +
+          (state.updated ? `, дозаполнено: ${state.updated}` : "") +
+          `, пропущено дублей: ${state.skippedDuplicates}` +
           (state.errors.length ? `, ошибок: ${state.errors.length}` : "")
       );
       if (state.errors.length === 0) setOpen(false);
